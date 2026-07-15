@@ -12,6 +12,8 @@ import BottomNav from './BottomNav';
 import Toast from './Toast';
 import ConfirmModal from './ConfirmModal';
 import PagePlaceholder from './PagePlaceholder';
+import PageHome from './PageHome';
+import PageRisk from './PageRisk';
 
 const PAGES: { id: JournalPage; title: string }[] = [
   { id: 'home', title: 'Home' },
@@ -45,7 +47,9 @@ export default function JournalApp() {
       <Topbar />
 
       <div className={`main ${activePage === 'home' ? 'home-active' : ''}`}>
-        {PAGES.map((p) => (
+        <PageHome active={activePage === 'home'} />
+        <PageRisk active={activePage === 'risk'} />
+        {PAGES.filter(p => p.id !== 'home' && p.id !== 'risk').map((p) => (
           <PagePlaceholder key={p.id} id={p.id} title={p.title} active={activePage === p.id} />
         ))}
       </div>

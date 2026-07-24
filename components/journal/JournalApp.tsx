@@ -1,10 +1,8 @@
 // components/journal/JournalApp.tsx
-// Pengganti kerangka index.html: <div class="main [home-active]"> yang
-// membungkus 8 <div class="page">, plus splash/auth overlay/topbar/botnav.
 'use client';
 
 import { useEffect } from 'react';
-import { useJournalStore, JournalPage } from '@/store/useJournalStore';
+import { useJournalStore, type JournalPage } from '@/store/useJournalStore';
 import Splash from './Splash';
 import AuthOverlay from './AuthOverlay';
 import Topbar from './Topbar';
@@ -14,30 +12,29 @@ import ConfirmModal from './ConfirmModal';
 import PagePlaceholder from './PagePlaceholder';
 import PageHome from './PageHome';
 import PageRisk from './PageRisk';
+import PagePlan from './PagePlan';
+import PageData from './PageData';
 
-const PAGES: { id: JournalPage; title: string }[] = [
-  { id: 'home', title: 'Home' },
-  { id: 'news', title: 'News' },
-  { id: 'risk', title: 'Risiko' },
-  { id: 'plan', title: 'Plan' },
-  { id: 'data', title: 'Jurnal' },
-  { id: 'filter', title: 'Filter' },
-  { id: 'weekly', title: 'Mingguan' },
+const PLACEHOLDER_PAGES: { id: JournalPage; title: string }[] = [
+  { id: 'news',    title: 'News' },
+  { id: 'filter',  title: 'Filter' },
+  { id: 'weekly',  title: 'Mingguan' },
   { id: 'monthly', title: 'Bulanan' },
 ];
 
 export default function JournalApp() {
-  const activePage = useJournalStore((s) => s.activePage);
+  const activePage    = useJournalStore((s) => s.activePage);
+  const setActivePage = useJournalStore((s) => s.setActivePage);
 
-  // index.html baris 3340-3343 — load theme tersimpan saat mount
+  const switchPage = (page: string) => setActivePage(page as JournalPage);
+
   useEffect(() => {
     const saved = (localStorage.getItem('jz_theme') as 'dark' | 'light') || 'dark';
     document.documentElement.setAttribute('data-theme', saved);
     useJournalStore.setState({ theme: saved });
-    // index.html tidak restore last_tab otomatis di switchPage, tapi
-    // jz_last_tab disimpan tiap ganti tab — tidak di-restore saat load
-    // di source aslinya, jadi di sini pun sengaja tidak di-restore.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    const lastTab = localStorage.getItem('jz_last_tab') as JournalPage | null;
+    if (lastTab) setActivePage(lastTab);
   }, []);
 
   return (
@@ -47,9 +44,12 @@ export default function JournalApp() {
       <Topbar />
 
       <div className={`main ${activePage === 'home' ? 'home-active' : ''}`}>
-        <PageHome active={activePage === 'home'} />
+        <PageHome active={activePage === 'home'} switchPage={switchPage} openApiKeyModal={() => {}} />
         <PageRisk active={activePage === 'risk'} />
-        {PAGES.filter(p => p.id !== 'home' && p.id !== 'risk').map((p) => (
+        <PagePlan active={activePage === 'plan'} switchPage={switchPage} />
+        <PageData active={activePage === 'data'} />
+
+        {PLACEHOLDER_PAGES.map((p) => (
           <PagePlaceholder key={p.id} id={p.id} title={p.title} active={activePage === p.id} />
         ))}
       </div>

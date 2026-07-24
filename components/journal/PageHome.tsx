@@ -1,14 +1,16 @@
 "use client";
 
 export default function PageHome({
+  active,
   switchPage,
   openApiKeyModal,
 }: {
+  active: boolean;
   switchPage: (page: string) => void;
   openApiKeyModal: () => void;
 }) {
   return (
-    <div className="page active" id="page-home">
+    <div className={`page${active ? ' active' : ''}`} id="page-home">
 
       {/* HERO */}
       <div className="home-hero">

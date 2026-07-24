@@ -12,25 +12,74 @@ import type { Currency } from '@/lib/riskCalc';
 export default function PageRisk({ active }: { active: boolean }) {
   const { ticker } = useRates();
   const {
-    currency, setCurrency, balanceRaw, targetRaw, setTargetRaw,
+    currency, setCurrency, balanceRaw, setBalanceRaw, targetRaw, setTargetRaw,
     risk, setRisk, months, setMonths, pair, leverage,
     pipval, pipvalHint, leverageHint, leverageWarn, convertInfo, balHint, tgtHint,
     result,
-    onBalanceInput, onPairChange, onLeverageChange, doCalc, resetRisk,
+    onBalanceInput, onTargetInput, onPairChange, onLeverageChange, doCalc, resetRisk, calcFromValues,
     CURRENCY_PRE, CURRENCY_PH, CURRENCY_PHT,
   } = useRiskForm();
 
   // Restore saved state saat pertama mount
   useEffect(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem('jz_state') || 'null');
-      if (saved) {
-        // NOTE: auto-hitung ulang setelah restore tidak dilakukan di source aslinya
-        // (user harus klik Hitung lagi) — dipertahankan sama.
-      }
       const savedCur = (localStorage.getItem('jz_currency') as Currency) || 'IDR';
       setCurrency(savedCur);
-    } catch {}
+
+      const saved = JSON.parse(localStorage.getItem('jz_state') || 'null');
+      if (!saved) return;
+
+      const cur: Currency = saved.currency || saved.inputCurrency || savedCur;
+      const kursR = 16462;
+
+      // Restore display strings (sama persis dengan index.html baris 674175)
+      let balStr = '';
+      let tgtStr = '';
+
+      if (saved.balanceInput != null) {
+        balStr = cur === 'IDR'
+          ? Math.round(saved.balanceInput).toLocaleString('id-ID')
+          : String(saved.balanceInput);
+      } else if (saved.balance) {
+        balStr = cur === 'CENT'
+          ? ((saved.balance / kursR) * 100).toFixed(1)
+          : cur === 'USD'
+          ? (saved.balance / kursR).toFixed(2)
+          : Math.round(saved.balance).toLocaleString('id-ID');
+      }
+
+      if (saved.targetInput != null) {
+        tgtStr = cur === 'IDR'
+          ? Math.round(saved.targetInput).toLocaleString('id-ID')
+          : String(saved.targetInput);
+      } else if (saved.target) {
+        tgtStr = cur === 'CENT'
+          ? ((saved.target / kursR) * 100).toFixed(1)
+          : cur === 'USD'
+          ? (saved.target / kursR).toFixed(2)
+          : Math.round(saved.target).toLocaleString('id-ID');
+      }
+
+      const riskStr = saved.risk ? String(saved.risk) : '';
+      const monthsStr = saved.months ? String(saved.months) : '';
+      const pairStr = saved.pair || '';
+      const levStr = saved.leverage ? String(saved.leverage) : '';
+
+      // Set semua state sekaligus
+      setBalanceRaw(balStr);
+      setTargetRaw(tgtStr);
+      if (riskStr) setRisk(riskStr);
+      if (monthsStr) setMonths(monthsStr);
+      if (pairStr) onPairChange(pairStr, cur);
+      if (levStr) onLeverageChange(levStr);
+
+      // Hitung result LANGSUNG dari nilai — tidak perlu tunggu state flush
+      // Ini persis seperti doCalc() di index.html yang dipanggil synchronous
+      calcFromValues(balStr, tgtStr, cur, riskStr, monthsStr, pairStr, levStr);
+
+    } catch (e) {
+      console.warn('[PageRisk] restore failed:', e);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -158,7 +207,7 @@ export default function PageRisk({ active }: { active: boolean }) {
                     type="text"
                     id="q-target"
                     value={targetRaw}
-                    onChange={(e) => setTargetRaw(e.target.value)}
+                    onChange={(e) => onTargetInput(e.target.value, currency)}
                     placeholder={CURRENCY_PHT[currency]}
                   />
                 </div>

@@ -19,13 +19,49 @@ export interface Profile {
   is_activated?: boolean;
 }
 
+// ── Trade (full — sesuai dbRowToTrade di index.html) ──
 export interface Trade {
-  user_id: string;
+  id: string;
+  seq?: number;
   tanggal: string;
+  sesi: string;
   pair: string;
+  posisi: string;
+  lot: number | null;
+  entry: number | null;
+  sl: number | null;
+  tp: number | null;
+  close: number | null;
   result: string;
-  lot: number;
-  pl_idr: number;
+  pips: number | null;
+  pl_idr?: number | null;
+  _pl?: number | null;       // computed running P/L (display currency)
+  _saldo?: number | null;    // computed running saldo (display currency)
+  kurs: number | null;
+  rr: number | null;
+  metode: string;
+  strategi: string;
+  reason: string;
+  reasonFib: string;
+  reasonCustom: string;
+  catatan: string;
+  riskLevel: string;
+  emosiKontrol: string;
+  source?: string;
+  photos: string[];
+  fotoAnalisa: string[];
+  // Supabase fields
+  user_id?: string;
+}
+
+// ── DW (full) ──
+export interface DW {
+  id: string;
+  tanggal: string;
+  deposit: number;
+  withdraw: number;
+  catatan?: string;
+  _auto?: boolean;
 }
 
 export interface DepositWithdrawal {

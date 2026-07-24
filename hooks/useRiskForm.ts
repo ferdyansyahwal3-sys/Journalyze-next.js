@@ -239,12 +239,113 @@ export function useRiskForm() {
     );
   }, [showConfirmModal]);
 
+  // ── calcFromValues: hitung result langsung dari nilai tanpa lewat state ──
+  // Dipakai oleh PageRisk untuk auto-calc saat restore dari localStorage
+  const calcFromValues = useCallback((
+    balRaw: string, tgtRaw: string, cur: Currency,
+    riskStr: string, monthsStr: string, pairStr: string, levStr: string
+  ) => {
+    const kurs = liveRates.USD_IDR || 16462;
+    const balanceInput = parseInputVal(balRaw, cur);
+    const targetInput = parseInputVal(tgtRaw, cur);
+    const balance = inputToIDR(balanceInput, cur);
+    const target = inputToIDR(targetInput, cur);
+    const riskVal = parseFloat(riskStr);
+    const monthsVal = parseInt(monthsStr);
+    const leverageVal = parseInt(levStr) || 0;
+    if (!balance || !target || target <= balance || !leverageVal) return;
+
+    const toDisp = (v: number) => cur === 'CENT'
+      ? Math.round((v / kurs) * 100 * 10) / 10
+      : cur === 'USD' ? Math.round((v / kurs) * 100) / 100 : v;
+
+    const balForLot = toDisp(balance);
+    const tgtForLot = toDisp(target);
+    const lotAwalPlan = getLotByBal(balForLot, cur);
+    const lotAkhirPlan = getLotByBal(tgtForLot, cur);
+    const fmt = (v: number) => Math.max(0.01, v).toFixed(2);
+    let recLot = lotAwalPlan === lotAkhirPlan ? fmt(lotAwalPlan) : fmt(lotAwalPlan) + '—' + fmt(lotAkhirPlan);
+    if (riskVal >= 3) recLot += ' ⚠️';
+
+    const tipeAkun = getTipeAkun(balForLot, cur);
+    const layer = getLayer(balForLot, cur);
+    const sl = getSL(pairStr);
+    const profil = getProfil(riskVal);
+    const mindset = getMindset(riskVal);
+    const growthBulanRp = target - balance;
+    const growthBulanPct = ((target / balance) - 1) * 100;
+
+    const layerMax = parseInt((layer.match(/(\d+)\s*Layer/g) || []).slice(-1)[0]) || 1;
+    const perLotAwal = lotAwalPlan / layerMax;
+    const perLotAkhir = lotAkhirPlan / layerMax;
+    const fmtL = (v: number) => Math.max(0.01, Math.round(v * 100) / 100).toFixed(2);
+    const perLayer = Math.abs(perLotAwal - perLotAkhir) < 0.005 ? fmtL(perLotAwal) : fmtL(perLotAwal) + '—' + fmtL(perLotAkhir);
+
+    const marginIDR = calcMarginIDR(pairStr, leverageVal, kurs);
+    const marginDisp = cur === 'IDR'
+      ? 'Rp ' + marginIDR.toLocaleString('id-ID')
+      : cur === 'CENT' ? ((marginIDR / kurs) * 100).toFixed(2) + '¢'
+      : '$' + (marginIDR / kurs).toFixed(2);
+    const freeMarginIDR = balance - marginIDR;
+    const freeMarginDisp = cur === 'IDR'
+      ? 'Rp ' + Math.abs(freeMarginIDR).toLocaleString('id-ID')
+      : cur === 'CENT' ? ((Math.abs(freeMarginIDR) / kurs) * 100).toFixed(2) + '¢'
+      : '$' + (Math.abs(freeMarginIDR) / kurs).toFixed(2);
+    const isMarginOk = freeMarginIDR > 0;
+    const leverageHighRisk = leverageVal >= 1000;
+
+    const growthDisp = fmtDispCur(idrToDisp(growthBulanRp, cur), cur);
+    const balDisp = fmtDispCur(idrToDisp(balance, cur), cur);
+    const tgtDisp = fmtDispCur(idrToDisp(target, cur), cur);
+    const leverageLabel = '1:' + leverageVal;
+
+    const rows: RiskRow[] = [
+      { i: '🏦', l: 'Tipe Akun Disarankan', v: tipeAkun, c: '' },
+      { i: '📦', l: 'Rekomendasi Lot', v: recLot, c: 'blue' },
+      { i: '⚖️', l: 'Rekomendasi Layer per 1x Entry', v: layer, c: '' },
+      { i: '🔸', l: 'Rekomendasi Lot per Layer', v: perLayer, c: 'blue' },
+      { i: '🎯', l: 'Stop Loss (SL) Direkomendasikan', v: sl, c: '' },
+      { i: '📈', l: 'Growth Bulanan Ideal', v: growthDisp + ' (' + growthBulanPct.toFixed(1) + '%)', c: 'green' },
+      { i: '🧠', l: 'Profil Risiko', v: profil.e + ' ' + profil.l, c: '' },
+      { i: '💡', l: 'Saran Mindset', v: mindset, c: '' },
+      { i: '⚡', l: 'Leverage Aktif', v: leverageLabel + (leverageHighRisk ? ' ⚠️' : ''), c: 'blue' },
+      { i: '💳', l: 'Margin / 0.01 lot (' + pairStr + ')', v: marginDisp, c: '' },
+      { i: '🛡️', l: 'Free Margin Estimasi', v: (isMarginOk ? '' : '⚠️ ') + freeMarginDisp, c: isMarginOk ? 'green' : 'red' },
+    ];
+
+    const leverageNote = leverageHighRisk
+      ? ` Leverage <strong>${leverageLabel}</strong> sangat tinggi — <em>waspadai margin call di kondisi volatil</em>.`
+      : ` Leverage <strong>${leverageLabel}</strong>, margin per trade <strong>${marginDisp}</strong>.`;
+    const concText = `Dengan saldo awal <strong>${balDisp}</strong>, risiko <strong>${riskVal}%</strong>, target <strong>${tgtDisp}</strong> dalam <strong>${monthsVal} bulan</strong>, fokus pair <strong>${pairStr}</strong>. Akun: <strong>${tipeAkun}</strong>, lot ideal <strong>${recLot}</strong>, SL <strong>${sl}</strong>. Profil: <strong>${profil.l}</strong>.${leverageNote} Saran: <em>${mindset}</em> 🚀`;
+
+    setResult({
+      rows,
+      badgeClass: leverageHighRisk ? 'ext' : profil.c,
+      badgeLabel: (leverageHighRisk ? '⚠️ High Leverage — ' : profil.e + ' ') + profil.l,
+      concText,
+      accRecVal: tipeAkun,
+      accRecDesc: getAccDesc(tipeAkun),
+    });
+  }, []);
+
+  // tambah onTargetInput
+  const onTargetInput = useCallback((val: string, cur: Currency) => {
+    let v = val;
+    if (cur === 'IDR') {
+      const n = v.replace(/[^0-9]/g, '');
+      v = n ? parseInt(n).toLocaleString('id-ID') : '';
+    }
+    setTargetRaw(v);
+    updateHints(cur, balanceRaw, v);
+  }, [balanceRaw, updateHints]);
+
   return {
     currency, setCurrency, balanceRaw, setBalanceRaw, targetRaw, setTargetRaw,
     risk, setRisk, months, setMonths, pair, leverage,
     pipval, pipvalHint, leverageHint, leverageWarn, convertInfo, balHint, tgtHint,
     result,
-    onBalanceInput, onPairChange, onLeverageChange, doCalc, resetRisk,
+    onBalanceInput, onTargetInput, onPairChange, onLeverageChange, doCalc, resetRisk,
+    calcFromValues,
     CURRENCY_PRE, CURRENCY_PH, CURRENCY_PHT,
   };
 }

@@ -144,8 +144,11 @@ function TradeModal({ form, setForm, onSave, onClose, currency }: {
   const [fotoAnalisa, setFotoAnalisa] = useState<string[]>(form.fotoAnalisa || []);
 
   // ── Sync fotoAnalisa ke form setiap kali berubah ──
+  // setForm adalah plain useState setter, tidak support functional update
+  const formRef = useRef(form);
+  formRef.current = form;
   useEffect(() => {
-    setForm(prev => ({ ...prev, fotoAnalisa }));
+    setForm({ ...formRef.current, fotoAnalisa });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fotoAnalisa]);
 

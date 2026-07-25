@@ -143,6 +143,12 @@ function TradeModal({ form, setForm, onSave, onClose, currency }: {
   const [fotoOpen, setFotoOpen] = useState(false);
   const [fotoAnalisa, setFotoAnalisa] = useState<string[]>(form.fotoAnalisa || []);
 
+  // ── Sync fotoAnalisa ke form setiap kali berubah ──
+  useEffect(() => {
+    setForm(prev => ({ ...prev, fotoAnalisa }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fotoAnalisa]);
+
   // ── Reason block ──
   const selectedMetode = form.metode;
   const showReason = selectedMetode.length > 0 && !selectedMetode.every(m => NO_REASON.includes(m));
@@ -420,7 +426,8 @@ function TradeModal({ form, setForm, onSave, onClose, currency }: {
                   const b64 = ev.target?.result as string;
                   setFotoAnalisa(prev => {
                     const next = [...prev, b64];
-                    setForm(f => ({ ...f, fotoAnalisa: next }));
+                    // functional update tidak bisa dipakai karena setForm bukan useState setter biasa
+                    // update dilakukan via useEffect di bawah
                     return next;
                   });
                 };
@@ -471,7 +478,6 @@ function TradeModal({ form, setForm, onSave, onClose, currency }: {
                               e.stopPropagation();
                               const next = fotoAnalisa.filter((_, j) => j !== i);
                               setFotoAnalisa(next);
-                              setForm(f => ({ ...f, fotoAnalisa: next }));
                             }}
                             style={{ position: 'absolute', top: '3px', right: '3px', background: 'rgba(0,0,0,0.75)', border: 'none', borderRadius: '50%', width: '18px', height: '18px', fontSize: '9px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >✕</button>
@@ -707,7 +713,7 @@ export default function PageData({ active }: { active: boolean }) {
       metode: form.metode.join(', '), strategi: form.metode.join(', '),
       reason: form.reason, reasonFib: form.reasonFib, reasonCustom: form.reasonCustom,
       catatan: form.catatan, riskLevel: form.riskLevel, emosiKontrol: form.emosiKontrol,
-      source: 'manual', photos: uploadPreviews.length ? uploadPreviews : (existing?.photos || []), fotoAnalisa: form.fotoAnalisa || [],
+      source: 'manual', photos: existing?.photos || [], fotoAnalisa: form.fotoAnalisa || [],
     };
 
     if (isEdit) { await updateTrade(trade, userId); showToast('Trade diperbarui ✓', 'success'); }

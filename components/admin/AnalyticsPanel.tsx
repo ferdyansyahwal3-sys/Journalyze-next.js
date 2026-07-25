@@ -29,7 +29,7 @@ export default function AnalyticsPanel({ active }: { active: boolean }) {
       setLoading(true);
       loadAnalytics().then((res) => {
         if (res) {
-          setTrades(res.trades);
+          setTrades(res.trades as Trade[]);
           setDws(res.dws);
         }
         setLoading(false);
@@ -42,7 +42,7 @@ export default function AnalyticsPanel({ active }: { active: boolean }) {
     setLoading(true);
     const res = await loadAnalytics();
     if (res) {
-      setTrades(res.trades);
+      setTrades(res.trades as Trade[]);
       setDws(res.dws);
     }
     setLoading(false);

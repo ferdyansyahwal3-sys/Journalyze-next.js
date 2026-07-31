@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chart, registerables } from 'chart.js';
+import type { TooltipItem } from 'chart.js';
 import { useTradeStore, recalcAll } from '@/store/useTradeStore';
 import { liveRates, idrToDisp, fmtDispCur, fmtMoney, type Currency } from '@/lib/riskCalc';
 import type { Trade } from '@/lib/types';
@@ -61,7 +62,7 @@ export default function PageFilter({ active }: { active: boolean }) {
   const chartSessionRef = useRef<HTMLCanvasElement>(null);
   const chartDailyRef   = useRef<HTMLCanvasElement>(null);
   const chartPairRef    = useRef<HTMLCanvasElement>(null);
-  const chartInstances  = useRef<Record<string, Chart>>({});
+  const chartInstances  = useRef<Record<string, Chart<any, any[], any>>>({});
 
   useEffect(() => {
     setMounted(true);
@@ -193,8 +194,10 @@ export default function PageFilter({ active }: { active: boolean }) {
       bgColor: isDark ? '#0E0E0E' : '#FDFAF4',
     };
     const fontOpts = { family: 'JetBrains Mono', size: 9 };
-    const tooltipLabelBar = (ctx: { parsed: { y?: number; x?: number } | number }) => {
-      const v = typeof ctx.parsed === 'number' ? ctx.parsed : (ctx.parsed.y ?? ctx.parsed.x ?? 0);
+
+    // FIX: gunakan TooltipItem dari chart.js — type-safe, tidak merubah logic
+    const tooltipLabelBar = (ctx: TooltipItem<'bar'> | TooltipItem<'line'>) => {
+      const v = ctx.parsed.y ?? ctx.parsed.x ?? 0;
       return fmtM(v);
     };
 
@@ -248,7 +251,8 @@ export default function PageFilter({ active }: { active: boolean }) {
             responsive: false, animation: { duration: 500 }, cutout: '60%',
             plugins: {
               legend: { display: false },
-              tooltip: { callbacks: { label: (ctx: { label: string; parsed: number }) => ` ${ctx.label}: ${ctx.parsed} trade (${Math.round(ctx.parsed / totalSess * 100)}%)` } },
+              // FIX: gunakan TooltipItem<'doughnut'> — type-safe, logic sama persis
+              tooltip: { callbacks: { label: (ctx: TooltipItem<'doughnut'>) => ` ${ctx.label}: ${ctx.parsed} trade (${Math.round(ctx.parsed / totalSess * 100)}%)` } },
             },
           },
         });

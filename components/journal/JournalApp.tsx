@@ -15,11 +15,11 @@ import PageRisk from './PageRisk';
 import PagePlan from './PagePlan';
 import PageData from './PageData';
 import PageFilter from './PageFilter';
+import PageWeekly from './PageWeekly';
+import PageMonthly from './PageMonthly';
 
 const PLACEHOLDER_PAGES: { id: JournalPage; title: string }[] = [
-  { id: 'news',    title: 'News' },
-  { id: 'weekly',  title: 'Mingguan' },
-  { id: 'monthly', title: 'Bulanan' },
+  { id: 'news', title: 'News' },
 ];
 
 export default function JournalApp() {
@@ -49,6 +49,8 @@ export default function JournalApp() {
         <PagePlan active={activePage === 'plan'} switchPage={switchPage} />
         <PageData active={activePage === 'data'} />
         <PageFilter active={activePage === 'filter'} />
+        <PageWeekly active={activePage === 'weekly'} />
+        <PageMonthly active={activePage === 'monthly'} />
 
         {PLACEHOLDER_PAGES.map((p) => (
           <PagePlaceholder key={p.id} id={p.id} title={p.title} active={activePage === p.id} />

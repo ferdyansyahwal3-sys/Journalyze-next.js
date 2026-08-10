@@ -194,6 +194,7 @@ export default function PageWeekly({ active }: { active: boolean }) {
     }
 
     // Chart 3: PvL Donut — verbatim buildPieChart dari index.html
+    // FIX: new Chart<'doughnut'> supaya TypeScript tahu type-nya dan cutout valid
     destroy('pvl');
     if (refPvl.current) {
       const pvlP = filtered.filter(t => t.result === 'Profit').reduce((a, t) => a + (t._pl || 0), 0);
@@ -202,11 +203,11 @@ export default function PageWeekly({ active }: { active: boolean }) {
       if (total > 0) {
         refPvl.current.width = 130; refPvl.current.height = 130;
         refPvl.current.style.width = '130px'; refPvl.current.style.height = '130px';
-        charts.current['pvl'] = new Chart(refPvl.current, {
+        charts.current['pvl'] = new Chart<'doughnut'>(refPvl.current, {
           type: 'doughnut',
           data: { labels: ['Profit', 'Lose'], datasets: [{ data: [pvlP, pvlL], backgroundColor: [C.green, C.red], borderColor: C.bgColor, borderWidth: 2, hoverOffset: 4 }] },
           options: { responsive: false, animation: { duration: 400 }, cutout: '58%',
-            plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx: { label: string; parsed: number }) => ` ${ctx.label}: ${Math.round(ctx.parsed / total * 100)}%` } } },
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${Math.round(ctx.parsed / total * 100)}%` } } },
           },
         });
       }
@@ -483,12 +484,10 @@ export default function PageWeekly({ active }: { active: boolean }) {
             <div style={{ fontSize: '12.5px', color: 'var(--text2)', lineHeight: 1.8 }}>
               {/* Grid 3 card stat — style VERBATIM dari index.html */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                {/* Total P/L */}
                 <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px' }}>
                   <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '8px', letterSpacing: '1.5px', textTransform: 'uppercase', color: 'var(--text3)', marginBottom: '4px' }}>Total P/L</div>
                   <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '13px', fontWeight: 700, color: plColor }}>{fmtM(pl)}</div>
                 </div>
-                {/* Win Rate — VERBATIM: ${wr}% <span style="font-size:10px;color:var(--text3)">(${wins}W/${losses}L)</span> */}
                 <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px' }}>
                   <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '8px', letterSpacing: '1.5px', textTransform: 'uppercase', color: 'var(--text3)', marginBottom: '4px' }}>Win Rate</div>
                   <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '13px', fontWeight: 700, color: wrColor }}>
@@ -496,13 +495,11 @@ export default function PageWeekly({ active }: { active: boolean }) {
                     <span style={{ fontSize: '10px', color: 'var(--text3)' }}>({winsCount}W/{lossesCount}L)</span>
                   </div>
                 </div>
-                {/* Profit Factor */}
                 <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px' }}>
                   <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '8px', letterSpacing: '1.5px', textTransform: 'uppercase', color: 'var(--text3)', marginBottom: '4px' }}>Profit Factor</div>
                   <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '13px', fontWeight: 700, color: 'var(--gold2)' }}>{pf}</div>
                 </div>
               </div>
-              {/* Paragraph — VERBATIM dari renderKesimpulan() */}
               <p style={{ fontSize: '12.5px', color: 'var(--text2)', lineHeight: 1.8 }}>
                 Dari <strong style={{ color: 'var(--text)' }}>{stats.total} trade</strong> yang difilter,{' '}
                 total P/L adalah <strong style={{ color: plColor }}>{fmtM(pl)}</strong>{' '}

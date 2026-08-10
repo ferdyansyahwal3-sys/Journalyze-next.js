@@ -91,3 +91,29 @@ export type PendingAction =
   | { type: 'revoke' | 'restore'; key: string }
   | { type: 'block' | 'unblock'; email: string }
   | null;
+// ── Weekly Review (untuk /live route) ──
+export interface WeeklyReview {
+  id: string;
+  user_id?: string;
+  week_start?: string | null;
+  week_end?: string | null;
+  total_trades?: number | null;
+  wins?: number | null;
+  losses?: number | null;
+  win_rate?: number | null;
+  total_pnl?: number | null;
+  notes?: string | null;
+}
+
+// ── Monthly Review (untuk /live route) ──
+export interface MonthlyReview {
+  id: string;
+  user_id?: string;
+  month?: string | null;
+  total_trades?: number | null;
+  wins?: number | null;
+  losses?: number | null;
+  win_rate?: number | null;
+  total_pnl?: number | null;
+  notes?: string | null;
+}

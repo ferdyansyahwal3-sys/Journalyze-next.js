@@ -195,7 +195,6 @@ export default function PageFilter({ active }: { active: boolean }) {
     };
     const fontOpts = { family: 'JetBrains Mono', size: 9 };
 
-    // FIX: gunakan TooltipItem dari chart.js — type-safe, tidak merubah logic
     const tooltipLabelBar = (ctx: TooltipItem<'bar'> | TooltipItem<'line'>) => {
       const v = ctx.parsed.y ?? ctx.parsed.x ?? 0;
       return fmtM(v);
@@ -234,14 +233,15 @@ export default function PageFilter({ active }: { active: boolean }) {
       });
     }
 
-    // Chart 2: Session donut — FIX: pakai C.gold, C.green, C.blue (bukan variabel bebas)
+    // Chart 2: Session donut
+    // FIX: new Chart<'doughnut'> supaya TypeScript tahu type-nya dan cutout valid
     destroyChart('session');
     if (chartSessionRef.current) {
       const sessColors = [C.gold, C.green, C.blue];
       const sessTotals = sesiData.map(s => s.total);
       const totalSess  = sessTotals.reduce((a, v) => a + v, 0);
       if (totalSess > 0) {
-        chartInstances.current['session'] = new Chart(chartSessionRef.current, {
+        chartInstances.current['session'] = new Chart<'doughnut'>(chartSessionRef.current, {
           type: 'doughnut',
           data: {
             labels: sesiData.map(s => s.session),
@@ -251,7 +251,6 @@ export default function PageFilter({ active }: { active: boolean }) {
             responsive: false, animation: { duration: 500 }, cutout: '60%',
             plugins: {
               legend: { display: false },
-              // FIX: gunakan TooltipItem<'doughnut'> — type-safe, logic sama persis
               tooltip: { callbacks: { label: (ctx: TooltipItem<'doughnut'>) => ` ${ctx.label}: ${ctx.parsed} trade (${Math.round(ctx.parsed / totalSess * 100)}%)` } },
             },
           },

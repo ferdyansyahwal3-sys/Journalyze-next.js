@@ -277,6 +277,7 @@ export default function PageMonthly({ active }: { active: boolean }) {
     }
 
     // Chart 3: PvL Donut — verbatim buildPieChart dari index.html
+    // FIX: new Chart<'doughnut'> supaya TypeScript tahu type-nya dan cutout valid
     destroy('pvl');
     if (refPvl.current) {
       const pvlP = filtered.filter(t => t.result === 'Profit').reduce((a, t) => a + (t._pl || 0), 0);
@@ -285,11 +286,11 @@ export default function PageMonthly({ active }: { active: boolean }) {
       if (total > 0) {
         refPvl.current.width = 130; refPvl.current.height = 130;
         refPvl.current.style.width = '130px'; refPvl.current.style.height = '130px';
-        charts.current['pvl'] = new Chart(refPvl.current, {
+        charts.current['pvl'] = new Chart<'doughnut'>(refPvl.current, {
           type: 'doughnut',
           data: { labels: ['Profit', 'Lose'], datasets: [{ data: [pvlP, pvlL], backgroundColor: [C.green, C.red], borderColor: C.bgColor, borderWidth: 2, hoverOffset: 4 }] },
           options: { responsive: false, animation: { duration: 400 }, cutout: '58%',
-            plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx: { label: string; parsed: number }) => ` ${ctx.label}: ${Math.round(ctx.parsed / total * 100)}%` } } },
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${Math.round(ctx.parsed / total * 100)}%` } } },
           },
         });
       }

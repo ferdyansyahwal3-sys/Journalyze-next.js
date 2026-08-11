@@ -91,8 +91,6 @@ export default function PageWeekly({ active }: { active: boolean }) {
   const refEquity  = useRef<HTMLCanvasElement>(null);
   const charts     = useRef<Record<string, Chart<any, any[], any>>>({});
 
-  // ── semua hooks di atas early return ──────────────────────────────────────
-
   useEffect(() => {
     setMounted(true);
     const rs = getRiskState();
@@ -158,7 +156,7 @@ export default function PageWeekly({ active }: { active: boolean }) {
     const C = getC();
     const fmtM = (v: number) => fmtMoney(v, currency);
 
-    // Chart 1: Session BAR — verbatim buildSessionPairPVL dari index.html
+    // Chart 1: Session BAR
     destroy('session');
     if (refSession.current) {
       const sNames = ['Asia', 'London', 'US'];
@@ -175,7 +173,7 @@ export default function PageWeekly({ active }: { active: boolean }) {
       }
     }
 
-    // Chart 2: Pair Horizontal Bar — verbatim buildSessionPairPVL dari index.html
+    // Chart 2: Pair Horizontal Bar
     destroy('pair');
     if (refPair.current) {
       const pProfit = PAIR_NAMES.map(p => filtered.filter(t => t.pair === p && t.result === 'Profit').reduce((a, t) => a + (t._pl || 0), 0));
@@ -193,7 +191,7 @@ export default function PageWeekly({ active }: { active: boolean }) {
       });
     }
 
-    // Chart 3: PvL Donut — verbatim buildPieChart dari index.html
+    // Chart 3: PvL Donut
     // FIX: new Chart<'doughnut'> supaya TypeScript tahu type-nya dan cutout valid
     destroy('pvl');
     if (refPvl.current) {
@@ -213,7 +211,7 @@ export default function PageWeekly({ active }: { active: boolean }) {
       }
     }
 
-    // Chart 4: P/L per Hari BAR — verbatim renderWeekly dari index.html
+    // Chart 4: P/L per Hari BAR
     destroy('daily');
     if (refDaily.current && sortedFlt.length > 0) {
       const dayMap: Record<string, number> = {};
@@ -230,7 +228,7 @@ export default function PageWeekly({ active }: { active: boolean }) {
       });
     }
 
-    // Chart 5: Strategi Horizontal Bar — verbatim renderWeekly dari index.html
+    // Chart 5: Strategi Horizontal Bar
     destroy('strat');
     if (refStrat.current && sortedFlt.length > 0) {
       const stratMap: Record<string, { profit: number; lose: number }> = {};
@@ -258,7 +256,7 @@ export default function PageWeekly({ active }: { active: boolean }) {
       }
     }
 
-    // Chart 6: Equity Curve — verbatim renderWeekly dari index.html
+    // Chart 6: Equity Curve
     destroy('equity');
     if (refEquity.current && sortedFlt.length > 0) {
       const isSingleDay = dateFrom && dateTo && dateFrom === dateTo;
@@ -338,7 +336,7 @@ export default function PageWeekly({ active }: { active: boolean }) {
         </span>
       </div>
 
-      {/* FILTER BAR — verbatim dari index.html */}
+      {/* FILTER BAR */}
       <div className="flt-bar">
         <div className="flt-dd-row" style={{ gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr auto' }}>
           <div className="fg">
@@ -382,7 +380,7 @@ export default function PageWeekly({ active }: { active: boolean }) {
             <button className="btn btn-ghost btn-sm" onClick={resetWeekly} style={{ alignSelf: 'flex-end' }}>↺ Reset</button>
           </div>
         </div>
-        {/* Quick week shortcuts — verbatim dari index.html */}
+        {/* Quick week shortcuts */}
         <div style={{ marginTop: '10px', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '8px', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text3)', flexShrink: 0 }}>Pintas:</span>
           <button className="btn btn-ghost btn-sm" onClick={() => setRange(0)}       style={{ padding: '3px 9px', fontSize: '10px' }}>Minggu Ini</button>
@@ -392,7 +390,7 @@ export default function PageWeekly({ active }: { active: boolean }) {
         </div>
       </div>
 
-      {/* STATS — verbatim dari index.html */}
+      {/* STATS */}
       <div className="flt-stats-row">
         <div className="flt-scard green"><div className="flt-scard-lbl">Profit</div><div className="flt-scard-val green">{stats.total ? fmtM(stats.profit) : '—'}</div></div>
         <div className="flt-scard red">  <div className="flt-scard-lbl">Lose</div>  <div className="flt-scard-val red">{stats.total ? fmtM(stats.lose) : '—'}</div></div>
@@ -404,7 +402,7 @@ export default function PageWeekly({ active }: { active: boolean }) {
         <div className="flt-scard red">  <div className="flt-scard-lbl">Worst Day</div><div className="flt-scard-val red">{stats.worstDay ? fmtDate(stats.worstDay[0]) + ' | ' + fmtM(stats.worstDay[1]) : '—'}</div></div>
       </div>
 
-      {/* ROW 1: Session + Pair + PvL — verbatim dari index.html */}
+      {/* ROW 1: Session + Pair + PvL */}
       <div className="g3" style={{ marginBottom: '14px' }}>
         <div className="box">
           <div className="box-head"><div className="box-title">🌏 Session Market</div></div>
@@ -420,12 +418,10 @@ export default function PageWeekly({ active }: { active: boolean }) {
         </div>
         <div className="box">
           <div className="box-head"><div className="box-title">📊 P vs L</div></div>
-          {/* verbatim dari index.html — div wrapper + id="wk-pvl-legend" style */}
           <div className="box-body" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '18px', minHeight: '160px' }}>
             <div style={{ width: '130px', height: '130px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <canvas ref={refPvl} width={130} height={130} style={{ display: 'block', width: '130px', height: '130px' }} />
             </div>
-            {/* Legend — style verbatim dari buildPieChart() di index.html */}
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '9px', padding: '4px 14px 4px 4px' }}>
               {pvlTotal > 0 ? (
                 [{ label: 'Profit', val: pvlP, color: 'var(--green)' }, { label: 'Lose', val: pvlL, color: 'var(--red)' }].map(item => (
@@ -448,7 +444,7 @@ export default function PageWeekly({ active }: { active: boolean }) {
         </div>
       </div>
 
-      {/* ROW 2: P/L Harian + Strategi — verbatim dari index.html */}
+      {/* ROW 2: P/L Harian + Strategi */}
       <div className="g2" style={{ marginBottom: '14px' }}>
         <div className="box">
           <div className="box-head"><div className="box-title">📅 P/L per Hari</div></div>
@@ -464,7 +460,7 @@ export default function PageWeekly({ active }: { active: boolean }) {
         </div>
       </div>
 
-      {/* ROW 3: Equity Curve — verbatim dari index.html */}
+      {/* ROW 3: Equity Curve */}
       <div className="box" style={{ marginBottom: '14px' }}>
         <div className="box-head">
           <div className="box-title">📈 Equity Curve (P/L Kumulatif)</div>
@@ -475,14 +471,12 @@ export default function PageWeekly({ active }: { active: boolean }) {
         </div>
       </div>
 
-      {/* KESIMPULAN — display:none jika tidak ada data, verbatim dari index.html renderKesimpulan() */}
+      {/* KESIMPULAN */}
       {filtered.length > 0 && (
         <div className="box" style={{ marginBottom: '14px' }}>
           <div className="box-head"><div className="box-title">💡 Kesimpulan Mingguan</div></div>
           <div className="box-body">
-            {/* Inline style VERBATIM dari renderKesimpulan() di index.html */}
             <div style={{ fontSize: '12.5px', color: 'var(--text2)', lineHeight: 1.8 }}>
-              {/* Grid 3 card stat — style VERBATIM dari index.html */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '12px' }}>
                 <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px' }}>
                   <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '8px', letterSpacing: '1.5px', textTransform: 'uppercase', color: 'var(--text3)', marginBottom: '4px' }}>Total P/L</div>
@@ -517,7 +511,7 @@ export default function PageWeekly({ active }: { active: boolean }) {
         </div>
       )}
 
-      {/* DATA TABLE — verbatim dari index.html */}
+      {/* DATA TABLE */}
       <div className="box">
         <div className="box-head">
           <div className="box-title">📋 Data Trading (Terfilter)</div>

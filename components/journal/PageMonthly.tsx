@@ -510,7 +510,6 @@ export default function PageMonthly({ active }: { active: boolean }) {
                 else if (day.lose < 0 && day.profit === 0)   cls += ' day-lose';
                 else if (day.profit > 0 || day.lose < 0)     cls += ' day-mixed';
               } else if (day.hasDep || day.hasWd) {
-                // DW saja, tidak ada trade
                 cls += '';
               }
 
@@ -520,21 +519,16 @@ export default function PageMonthly({ active }: { active: boolean }) {
 
               return (
                 <div key={day.date} className={cls} style={(!hasTradeData && (day.hasDep || day.hasWd)) || (hasTradeData && !day.hasDep && !day.hasWd) ? { justifyContent: 'space-between' } : {}}>
-                  {/* mo-day-num */}
                   <div className="mo-day-num">{day.dayNum}</div>
-                  {/* mo-day-cell-body — verbatim dari renderMoCalendar() */}
                   <div className="mo-day-cell-body">
-                    {/* mo-day-trade-count — class dari journal.css */}
                     {hasTradeData && (
                       <div className="mo-day-trade-count">{day.tradeCount} trade</div>
                     )}
-                    {/* mo-day-pl */}
                     {hasTradeData && (
                       <div className={`mo-day-pl ${plSign}`} style={noMoreDW ? { marginTop: 'auto' } : {}}>
                         {fmt(day.pl)}
                       </div>
                     )}
-                    {/* mo-day-dw dep/wd */}
                     {day.hasDep && <div className="mo-day-dw dep">+{fmt(day.depAmt)}</div>}
                     {day.hasWd  && <div className="mo-day-dw wd">-{fmt(day.wdAmt)}</div>}
                   </div>
@@ -561,12 +555,10 @@ export default function PageMonthly({ active }: { active: boolean }) {
         </div>
         <div className="box">
           <div className="box-head"><div className="box-title">📊 P vs L</div></div>
-          {/* verbatim dari index.html — style id="mo-pvl-legend" dari buildPieChart() */}
           <div className="box-body" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '18px', minHeight: '160px' }}>
             <div style={{ width: '130px', height: '130px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <canvas ref={refPvl} width={130} height={130} style={{ display: 'block', width: '130px', height: '130px' }} />
             </div>
-            {/* Legend style VERBATIM dari buildPieChart() di index.html */}
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '9px', padding: '4px 14px 4px 4px' }}>
               {pvlTot > 0 ? (
                 [{ label: 'Profit', val: pvlP, color: 'var(--green)' }, { label: 'Lose', val: pvlL, color: 'var(--red)' }].map(item => (
@@ -600,7 +592,6 @@ export default function PageMonthly({ active }: { active: boolean }) {
         <div className="box">
           <div className="box-head">
             <div className="box-title">📈 Equity Curve (Kumulatif)</div>
-            {/* subtitle VERBATIM dari index.html: "Bulan ini" */}
             <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '8px', color: 'var(--text3)' }}>Bulan ini</div>
           </div>
           <div className="box-body" style={{ padding: '14px 16px', minHeight: '140px' }}>
@@ -614,9 +605,7 @@ export default function PageMonthly({ active }: { active: boolean }) {
         <div className="box" style={{ marginBottom: '14px' }}>
           <div className="box-head"><div className="box-title">💡 Kesimpulan Bulanan</div></div>
           <div className="box-body">
-            {/* Konten VERBATIM dari renderKesimpulan() di index.html */}
             <div style={{ fontSize: '12.5px', color: 'var(--text2)', lineHeight: 1.8 }}>
-              {/* Grid 3 card stat — style VERBATIM */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '12px' }}>
                 <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px' }}>
                   <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '8px', letterSpacing: '1.5px', textTransform: 'uppercase', color: 'var(--text3)', marginBottom: '4px' }}>Total P/L</div>
@@ -634,7 +623,6 @@ export default function PageMonthly({ active }: { active: boolean }) {
                   <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '13px', fontWeight: 700, color: 'var(--gold2)' }}>{pf}</div>
                 </div>
               </div>
-              {/* Paragraph — VERBATIM dari renderKesimpulan() di index.html */}
               <p style={{ fontSize: '12.5px', color: 'var(--text2)', lineHeight: 1.8 }}>
                 Dari <strong style={{ color: 'var(--text)' }}>{stats.total} trade</strong> yang difilter,{' '}
                 total P/L adalah <strong style={{ color: plColor }}>{fmtM(pl)}</strong>{' '}

@@ -1,33 +1,42 @@
 // components/journal/Topbar.tsx
-// Dipindah dari index.html baris 1574-1618. Tombol Notif & API Key
-// disiapkan tempatnya tapi belum fungsional (modalnya baru dibangun
-// di Phase 6-7 sesuai roadmap) — ditandai TODO, bukan dihilangkan,
-// supaya tampilan topbar tetap identik.
 'use client';
 
 import { useJournalStore, JournalPage } from '@/store/useJournalStore';
 import { useJournalAuth } from '@/hooks/useJournalAuth';
 
 const PAGE_TABS: { id: JournalPage; label: string }[] = [
-  { id: 'home', label: '🏠 Home' },
-  { id: 'risk', label: '⚖️ Risiko' },
-  { id: 'plan', label: '📅 Plan' },
-  { id: 'data', label: '📋 Jurnal' },
-  { id: 'filter', label: '🔍 Filter' },
-  { id: 'weekly', label: '📆 Mingguan' },
+  { id: 'home',    label: '🏠 Home' },
+  { id: 'risk',    label: '⚖️ Risiko' },
+  { id: 'plan',    label: '📅 Plan' },
+  { id: 'data',    label: '📋 Jurnal' },
+  { id: 'filter',  label: '🔍 Filter' },
+  { id: 'weekly',  label: '📆 Mingguan' },
   { id: 'monthly', label: '📊 Bulanan' },
-  { id: 'news', label: '📰 News' },
+  { id: 'news',    label: '📰 News' },
 ];
 
-export default function Topbar() {
-  const activePage = useJournalStore((s) => s.activePage);
-  const setActivePage = useJournalStore((s) => s.setActivePage);
-  const theme = useJournalStore((s) => s.theme);
-  const setTheme = useJournalStore((s) => s.setTheme);
-  const currentUser = useJournalStore((s) => s.currentUser);
-  const userMenuOpen = useJournalStore((s) => s.userMenuOpen);
+// ── Phase 13: props baru untuk tombol NOTIF & API KEY ──
+interface TopbarProps {
+  apiKeyActive?: boolean;
+  notifGranted?: boolean;
+  onOpenApiKey?: () => void;
+  onOpenNotif?:  () => void;
+}
+
+export default function Topbar({
+  apiKeyActive = false,
+  notifGranted = false,
+  onOpenApiKey = () => {},
+  onOpenNotif  = () => {},
+}: TopbarProps) {
+  const activePage     = useJournalStore((s) => s.activePage);
+  const setActivePage  = useJournalStore((s) => s.setActivePage);
+  const theme          = useJournalStore((s) => s.theme);
+  const setTheme       = useJournalStore((s) => s.setTheme);
+  const currentUser    = useJournalStore((s) => s.currentUser);
+  const userMenuOpen   = useJournalStore((s) => s.userMenuOpen);
   const toggleUserMenu = useJournalStore((s) => s.toggleUserMenu);
-  const { doLogout } = useJournalAuth();
+  const { doLogout }   = useJournalAuth();
 
   const email = currentUser?.email || '';
 
@@ -53,7 +62,7 @@ export default function Topbar() {
       </div>
 
       <div className="theme-pill">
-        <button className={`topt ${theme === 'dark' ? 'active' : ''}`} onClick={() => setTheme('dark')}>
+        <button className={`topt ${theme === 'dark'  ? 'active' : ''}`} onClick={() => setTheme('dark')}>
           🌙 Dark
         </button>
         <button className={`topt ${theme === 'light' ? 'active' : ''}`} onClick={() => setTheme('light')}>
@@ -61,19 +70,33 @@ export default function Topbar() {
         </button>
       </div>
 
-      {/* TODO Phase 7: openNotifModal() */}
-      <button className="btn-notif" title="Pengaturan Notifikasi">
-        <span>🔔</span>
-        <span>Notif</span>
+      {/* Phase 13: NOTIF button — fungsional */}
+      <button
+        className={`btn-notif${notifGranted ? ' notif-on' : ''}`}
+        id="btn-notif"
+        onClick={onOpenNotif}
+        title="Pengaturan Notifikasi"
+      >
+        <span>{notifGranted ? '🔔' : '🔕'}</span>
+        <span>{notifGranted ? 'Notif ON' : 'Notif'}</span>
       </button>
 
-      {/* TODO Phase 6: openApiKeyModal() (fitur AI foto analisa) */}
-      <button className="btn-apikey key-warn" title="Hubungkan API Key untuk fitur analisis foto">
+      {/* Phase 13: API KEY button — fungsional */}
+      <button
+        className={`btn-apikey${apiKeyActive ? ' key-active' : ' key-warn'}`}
+        id="btn-apikey"
+        onClick={onOpenApiKey}
+        title="Hubungkan API Key untuk fitur analisis foto"
+      >
         <span className="key-dot"></span>
-        <span>API Key</span>
+        <span id="apikey-btn-label">{apiKeyActive ? 'AI Aktif' : 'API Key'}</span>
       </button>
 
-      <div className="user-badge" style={{ display: currentUser ? 'flex' : 'none' }} onClick={toggleUserMenu}>
+      <div
+        className="user-badge"
+        style={{ display: currentUser ? 'flex' : 'none' }}
+        onClick={toggleUserMenu}
+      >
         <div className="user-avatar">{(email[0] || '?').toUpperCase()}</div>
         <span className="user-email-lbl">{email}</span>
       </div>
@@ -82,7 +105,6 @@ export default function Topbar() {
         <div className="sync-indicator" style={{ padding: '6px 12px 10px' }}>
           <div className="sync-dot"></div>
           <span>Tersinkron</span>
-          {/* TODO Phase 4: dbgLog debug panel, dipindah bareng cloud sync engine (loadCloudData) */}
           <button
             title="Debug Supabase Log"
             style={{ background: 'none', border: 'none', color: 'var(--text4)', cursor: 'pointer', fontSize: 10, padding: '0 2px', opacity: 0.5, lineHeight: 1 }}

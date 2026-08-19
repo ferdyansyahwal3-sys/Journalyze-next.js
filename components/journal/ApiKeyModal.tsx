@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useApiKey, AiProvider } from '@/hooks/useApiKey';
 
 interface ApiKeyModalProps {
@@ -23,6 +23,9 @@ export default function ApiKeyModal({ isOpen, onClose, onSaved, onToast }: ApiKe
   const [visGemini,       setVisGemini]       = useState(false);
   const [visGeminiNews,   setVisGeminiNews]   = useState(false);
   const [visClaude,       setVisClaude]       = useState(false);
+  const [mounted,         setMounted]         = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -35,7 +38,7 @@ export default function ApiKeyModal({ isOpen, onClose, onSaved, onToast }: ApiKe
 
 
   const activeKey = provider === 'gemini' ? inputGemini : inputClaude;
-  const showDel = !!activeKey;
+  const showDel = mounted && !!activeKey;
 
   const handleSwitchTab = useCallback((prov: AiProvider) => switchProvider(prov), [switchProvider]);
 

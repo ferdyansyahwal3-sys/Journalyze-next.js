@@ -30,44 +30,55 @@ export default function PageRisk({ active }: { active: boolean }) {
       if (!saved) return;
 
       const cur: Currency = saved.currency || saved.inputCurrency || savedCur;
-      const kursR = 16462;
+      const kurs = liveRates?.USD_IDR || 16462;
 
-      // Restore display strings (sama persis dengan index.html baris 674175)
+      // FIX: prioritaskan balanceRaw/targetRaw (string display yang disimpan
+      // sejak versi baru), fallback ke konversi dari angka IDR untuk data lama
       let balStr = '';
       let tgtStr = '';
 
-      if (saved.balanceInput != null) {
+      if (saved.balanceRaw) {
+        // ✅ Data baru: langsung pakai string display yang sudah tersimpan
+        balStr = saved.balanceRaw;
+      } else if (saved.balanceInput != null && !isNaN(saved.balanceInput)) {
+        // ⬇️ Fallback data lama: balanceInput = hasil parseInputVal (angka dalam cur)
         balStr = cur === 'IDR'
           ? Math.round(saved.balanceInput).toLocaleString('id-ID')
           : String(saved.balanceInput);
-      } else if (saved.balance) {
+      } else if (saved.balance && !isNaN(saved.balance)) {
+        // ⬇️ Fallback paling lama: balance = angka IDR mentah
         balStr = cur === 'CENT'
-          ? ((saved.balance / kursR) * 100).toFixed(1)
+          ? ((saved.balance / kurs) * 100).toFixed(1)
           : cur === 'USD'
-          ? (saved.balance / kursR).toFixed(2)
+          ? (saved.balance / kurs).toFixed(2)
           : Math.round(saved.balance).toLocaleString('id-ID');
       }
 
-      if (saved.targetInput != null) {
+      if (saved.targetRaw) {
+        tgtStr = saved.targetRaw;
+      } else if (saved.targetInput != null && !isNaN(saved.targetInput)) {
         tgtStr = cur === 'IDR'
           ? Math.round(saved.targetInput).toLocaleString('id-ID')
           : String(saved.targetInput);
-      } else if (saved.target) {
+      } else if (saved.target && !isNaN(saved.target)) {
         tgtStr = cur === 'CENT'
-          ? ((saved.target / kursR) * 100).toFixed(1)
+          ? ((saved.target / kurs) * 100).toFixed(1)
           : cur === 'USD'
-          ? (saved.target / kursR).toFixed(2)
+          ? (saved.target / kurs).toFixed(2)
           : Math.round(saved.target).toLocaleString('id-ID');
       }
 
-      const riskStr = saved.risk ? String(saved.risk) : '';
-      const monthsStr = saved.months ? String(saved.months) : '';
+      // FIX: validasi nilai sebelum set — jangan set string "NaN" ke state
+      const riskNum = parseFloat(saved.risk);
+      const monthsNum = parseInt(saved.months);
+      const riskStr = isNaN(riskNum) ? '' : String(riskNum);
+      const monthsStr = isNaN(monthsNum) ? '' : String(monthsNum);
       const pairStr = saved.pair || '';
       const levStr = saved.leverage ? String(saved.leverage) : '';
 
       // Set semua state sekaligus
-      setBalanceRaw(balStr);
-      setTargetRaw(tgtStr);
+      if (balStr) setBalanceRaw(balStr);
+      if (tgtStr) setTargetRaw(tgtStr);
       if (riskStr) setRisk(riskStr);
       if (monthsStr) setMonths(monthsStr);
       if (pairStr) onPairChange(pairStr, cur);
@@ -75,7 +86,9 @@ export default function PageRisk({ active }: { active: boolean }) {
 
       // Hitung result LANGSUNG dari nilai — tidak perlu tunggu state flush
       // Ini persis seperti doCalc() di index.html yang dipanggil synchronous
-      calcFromValues(balStr, tgtStr, cur, riskStr, monthsStr, pairStr, levStr);
+      if (balStr && tgtStr && levStr) {
+        calcFromValues(balStr, tgtStr, cur, riskStr, monthsStr, pairStr, levStr);
+      }
 
     } catch (e) {
       console.warn('[PageRisk] restore failed:', e);

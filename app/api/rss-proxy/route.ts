@@ -10,6 +10,7 @@ const ALLOWED_DOMAINS = [
   'nfs.faireconomy.media',    // ForexFactory economic calendar JSON
   'feeds.feedburner.com',
   'www.dailyfx.com',
+  'www.forexfactory.com',
   'www.investing.com',
   'www.forexfactory.com',
   'rss.cnn.com',

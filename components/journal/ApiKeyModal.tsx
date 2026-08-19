@@ -32,9 +32,9 @@ export default function ApiKeyModal({ isOpen, onClose, onSaved, onToast }: ApiKe
     }
   }, [isOpen]);
 
-  const lsGemini = typeof window !== 'undefined' ? localStorage.getItem('jz_gemini_key') || '' : '';
-  const lsClaude = typeof window !== 'undefined' ? localStorage.getItem('jz_anthropic_key') || '' : '';
-  const activeKey = provider === 'gemini' ? (lsGemini || inputGemini) : (lsClaude || inputClaude);
+
+
+  const activeKey = provider === 'gemini' ? inputGemini : inputClaude;
   const showDel = !!activeKey;
 
   const handleSwitchTab = useCallback((prov: AiProvider) => switchProvider(prov), [switchProvider]);

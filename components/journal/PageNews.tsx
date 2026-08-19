@@ -1,9 +1,11 @@
 // components/journal/PageNews.tsx
 // Migrasi 1:1 dari index.html section#page-news
+// Phase 14: AI News Analysis — useNewsAI hook + auto-analyze saat berita loaded
 // Semua CSS class, logic filter/sort, render functions identik dengan source
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNewsAI } from '@/hooks/useNewsAI';
 
 // ── Constants (identik dengan index.html) ─────────────────────────────────────
 const NEWS_CACHE_KEY = 'jz_forex_news_v3';
@@ -20,7 +22,7 @@ interface NewsItem {
   emoji: string; pairs?: string[];
   analysis?: string; speculation?: string;
   scenario_bear?: string; scenario_bull?: string; headline?: string;
-  thumbnail?: string; _isMock?: boolean;
+  thumbnail?: string; _isMock?: boolean; _aiFallback?: boolean;
 }
 
 interface EconEvent {
@@ -65,7 +67,6 @@ function getCatEmoji(cat: string): string {
   return ({gold:'🥇',crypto:'₿',fed:'🇺🇸',economic:'📊',forex:'💱'} as Record<string,string>)[cat] || '📰';
 }
 
-// NEWS_CAT_KEYS — identik dengan index.html
 const NEWS_CAT_KEYS: Record<string, string[]> = {
   gold:     ['gold','xauusd','xau','bullion','precious metal','emas'],
   crypto:   ['bitcoin','btc','ethereum','crypto','blockchain','altcoin','defi'],
@@ -111,7 +112,6 @@ function extractPairs(title: string): string[] {
   return found.size ? [...found] : [];
 }
 
-// RSS XML parser — identik dengan parseRSSXML di index.html
 function parseRSSXML(xml: string, srcUrl: string): {title:string;desc:string;link:string;pubDate:string;thumbnail:string}[] {
   const items: {title:string;desc:string;link:string;pubDate:string;thumbnail:string}[] = [];
   const getFromBlock = (block: string, tag: string): string => {
@@ -126,8 +126,6 @@ function parseRSSXML(xml: string, srcUrl: string): {title:string;desc:string;lin
     const imgTag = block.match(/<img[^>]+src=["']([^"']+)["']/);
     return media?.[1] || encl?.[1] || imgTag?.[1] || '';
   };
-
-  // RSS <item>
   const itemRe = /<item[^>]*>([\s\S]*?)<\/item>/g;
   let m;
   while ((m = itemRe.exec(xml)) !== null) {
@@ -140,8 +138,6 @@ function parseRSSXML(xml: string, srcUrl: string): {title:string;desc:string;lin
     if (!title) continue;
     items.push({title, desc, link, pubDate, thumbnail});
   }
-
-  // Atom <entry>
   if (items.length === 0) {
     const entryRe = /<entry[^>]*>([\s\S]*?)<\/entry>/g;
     while ((m = entryRe.exec(xml)) !== null) {
@@ -159,7 +155,6 @@ function parseRSSXML(xml: string, srcUrl: string): {title:string;desc:string;lin
   return items;
 }
 
-// Flag resolver — identik dengan resolveFlag di index.html
 const FLAG_LIB: Record<string,string> = {USD:'🇺🇸',EUR:'🇪🇺',GBP:'🇬🇧',JPY:'🇯🇵',AUD:'🇦🇺',NZD:'🇳🇿',CAD:'🇨🇦',CHF:'🇨🇭',CNY:'🇨🇳',KRW:'🇰🇷'};
 const TITLE_CUR: [RegExp, string][] = [
   [/\bfed\b|fomc|nonfarm|non.farm|payroll|jobless|unemployment|\bcpi\b|\bppi\b|ism|\buom\b|consumer sentiment|inflation expect|crude oil|dollar/i,'USD'],
@@ -181,7 +176,6 @@ function resolveFlag(ev: {flag?:string;currency?:string;name?:string}): string {
   return '🌐';
 }
 
-// getWeekStart — WIB-aware, identik dengan _getWeekStart di index.html
 function getWeekStart(): string {
   const n = new Date(Date.now()+7*3600*1000);
   const dw = n.getUTCDay();
@@ -196,7 +190,6 @@ function getTodayWIB(): string {
   return n.getUTCFullYear()+'-'+String(n.getUTCMonth()+1).padStart(2,'0')+'-'+String(n.getUTCDate()).padStart(2,'0');
 }
 
-// mapCalEvents — filter high/medium, sort by day, identik dengan _mapCalEvents
 function mapCalEvents(evs: {date?:string;isoTime?:string;impact?:string;name?:string;title?:string;forecast?:string;prev?:string;previous?:string;actual?:string;flag?:string;currency?:string}[]): EconEvent[] {
   const DAY = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
   const ORDER = ['Sen','Sel','Rab','Kam','Jum','Sab','Min'];
@@ -219,17 +212,28 @@ function mapCalEvents(evs: {date?:string;isoTime?:string;impact?:string;name?:st
     .sort((a,b) => ORDER.indexOf(a.day) - ORDER.indexOf(b.day));
 }
 
-// RSS sources — identik dengan fetchFromRSS di index.html
 const RSS_SOURCES = [
-  {url:'https://www.investing.com/rss/news_25.rss',name:'Investing.com'},
-  {url:'https://finance.yahoo.com/rss/topstories',name:'Yahoo Finance'},
-  {url:'https://feeds.feedburner.com/forexlive',name:'ForexLive'},
   {url:'https://www.fxstreet.com/rss/news',name:'FXStreet'},
+  {url:'https://finance.yahoo.com/rss/topstories',name:'Yahoo Finance'},
+  {url:'https://www.forexfactory.com/news?format=rss',name:'ForexFactory'},
   {url:'https://www.dailyfx.com/feeds/all',name:'DailyFX'},
+  {url:'https://www.investing.com/rss/news_25.rss',name:'Investing.com'},
 ];
 
+// ── localStorage key read helper ──────────────────────────────────────────────
+function readLS(key: string): string {
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem(key) || '';
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
-export default function PageNews({ active }: { active: boolean }) {
+export default function PageNews({
+  active,
+  onOpenApiKeyModal,
+}: {
+  active: boolean;
+  onOpenApiKeyModal?: () => void;
+}) {
   const [allData, setAllData]       = useState<NewsItem[]>([]);
   const [events, setEvents]         = useState<EconEvent[]>([]);
   const [state, setState]           = useState<'idle'|'loading'|'ok'|'error'>('idle');
@@ -242,7 +246,28 @@ export default function PageNews({ active }: { active: boolean }) {
   const [expandedSpec, setExpandedSpec] = useState<Record<string,boolean>>({});
   const loadingRef = useRef(false);
 
-  // ── Fetch RSS — identik dengan fetchFromRSS ───────────────────────────────
+  // ── Phase 14: AI hook ─────────────────────────────────────────────────────
+  const { aiLoading, analyzeNews, clearCache } = useNewsAI();
+
+  // ── Helper: cek apakah ada API key ───────────────────────────────────────
+  const hasApiKey = useCallback(() => {
+    return !!(readLS('jz_gemini_key') || readLS('jz_anthropic_key'));
+  }, []);
+
+  // ── Phase 14: trigger AI setelah berita loaded ────────────────────────────
+  const triggerAI = useCallback(async (items: NewsItem[]) => {
+    if (!hasApiKey()) return items;
+    const FALLBACK_MARKER = 'Tambahkan API key';
+    const missingAnalysis = items.some(
+      n => !n.analysis || n._aiFallback || (n.speculation && n.speculation.includes(FALLBACK_MARKER))
+    );
+    if (!missingAnalysis) return items;
+
+    const updated = await analyzeNews([...items]);
+    return updated;
+  }, [hasApiKey, analyzeNews]);
+
+  // ── Fetch RSS — identik dengan fetchFromRSS ───────────────────────────
   const fetchRSS = useCallback(async (): Promise<NewsItem[]> => {
     const results: NewsItem[] = [];
     for (const src of RSS_SOURCES) {
@@ -276,14 +301,34 @@ export default function PageNews({ active }: { active: boolean }) {
     return results;
   }, []);
 
-  // ── Load news — identik dengan loadForexNews ──────────────────────────────
+  // ── Load news — identik dengan loadForexNews (+ Phase 14 AI trigger) ─────
   const loadNews = useCallback(async (force = false) => {
     if (loadingRef.current) return;
     if (!force) {
       try {
         const c = JSON.parse(localStorage.getItem(NEWS_CACHE_KEY)||'null');
         if (c && (Date.now()-c.ts) < NEWS_CACHE_TTL && c.items?.length) {
-          setAllData(c.items); setLastFetch(c.ts); setState('ok'); return;
+          // Phase 14: cek apakah cache perlu di-analyze AI
+          const FALLBACK_MARKER = 'Tambahkan API key';
+          const needsAI = hasApiKey() && c.items.some(
+            (n: NewsItem) => !n.analysis || n._aiFallback || (n.speculation && n.speculation.includes(FALLBACK_MARKER))
+          );
+          if (needsAI) {
+            // Reset field yang perlu di-analyze ulang (identik dengan source)
+            c.items.forEach((n: NewsItem) => {
+              if (!n.analysis || n._aiFallback || (n.speculation && n.speculation.includes(FALLBACK_MARKER))) {
+                n.analysis = ''; n.speculation = ''; n._aiFallback = false;
+              }
+            });
+            const updated = await triggerAI(c.items);
+            localStorage.setItem(NEWS_CACHE_KEY, JSON.stringify({ts: c.ts, items: updated}));
+            setAllData([...updated]);
+          } else {
+            setAllData(c.items);
+          }
+          setLastFetch(c.ts);
+          setState('ok');
+          return;
         }
       } catch { /* ignore */ }
     }
@@ -291,23 +336,26 @@ export default function PageNews({ active }: { active: boolean }) {
     setState('loading');
     try {
       let items = await fetchRSS();
-      // deduplicate
       const seen = new Set<string>();
       items = items.filter(n => {
         const k = n.title.slice(0,35).toLowerCase().replace(/\s+/g,'');
         if (seen.has(k)) return false; seen.add(k); return true;
       });
-      // sort newest
       items.sort((a,b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+
+      // Phase 14: analyze dengan AI setelah fetch
+      const analyzed = await triggerAI(items);
       const ts = Date.now();
-      localStorage.setItem(NEWS_CACHE_KEY, JSON.stringify({ts, items}));
-      setAllData(items); setLastFetch(ts); setState('ok');
+      localStorage.setItem(NEWS_CACHE_KEY, JSON.stringify({ts, items: analyzed}));
+      setAllData([...analyzed]);
+      setLastFetch(ts);
+      setState('ok');
     } catch {
       setState('ok');
     } finally {
       loadingRef.current = false;
     }
-  }, [fetchRSS]);
+  }, [fetchRSS, hasApiKey, triggerAI]);
 
   // ── Load calendar — identik dengan loadEconomicCalendar ──────────────────
   const loadCalendar = useCallback(async () => {
@@ -320,15 +368,12 @@ export default function PageNews({ active }: { active: boolean }) {
     const mn = new Date(ws+'T00:00:00Z');
     const fr = new Date(mn); fr.setUTCDate(mn.getUTCDate()+4);
     setCalTitle(`📅 ECONOMIC CALENDAR — ${mn.getUTCDate()} ${MO[mn.getUTCMonth()]} – ${fr.getUTCDate()} ${MO[fr.getUTCMonth()]} ${fr.getUTCFullYear()}`);
-
     try {
-      // Cek localStorage cache
       const alreadyFetched = localStorage.getItem(FETCH_KEY) === '1';
       const lc = JSON.parse(localStorage.getItem(LCKEY)||'null');
       if (alreadyFetched && lc?.length) {
         setEvents(mapCalEvents(lc)); setCalLoading(false); return;
       }
-      // Fetch dari API
       const ctrl = new AbortController();
       setTimeout(() => ctrl.abort(), 10000);
       const r = await fetch('/api/econ-calendar', {signal: ctrl.signal});
@@ -344,7 +389,6 @@ export default function PageNews({ active }: { active: boolean }) {
         throw new Error('empty');
       }
     } catch {
-      // fallback localStorage
       try {
         const lc = JSON.parse(localStorage.getItem(EC_CACHE_KEY+'_'+ws)||'null');
         if (lc?.length) { setEvents(mapCalEvents(lc)); setCalLoading(false); return; }
@@ -359,7 +403,7 @@ export default function PageNews({ active }: { active: boolean }) {
     if (active && state === 'idle') { loadNews(false); loadCalendar(); }
   }, [active, state, loadNews, loadCalendar]);
 
-  // ── Computed values (identik dengan renderSentimentPanel + renderMarketSpeculation) ─
+  // ── Computed values ───────────────────────────────────────────────────────
   const bullWords = ['rally','bullish','gains','rises','higher','strong','surge','breakout','positive','naik','menguat','tembus'];
   const bearWords = ['falls','drops','bearish','weak','decline','crash','negative','koreksi','melemah','tertekan','turun'];
   let bull = 0, bear = 0;
@@ -381,7 +425,6 @@ export default function PageNews({ active }: { active: boolean }) {
   const moodLabel = bull>bear ? 'Risk-On 📈 — pasar cenderung bullish' : bear>bull ? 'Risk-Off 📉 — tekanan jual dominan' : 'Mixed ↔️ — sentimen bercampur';
   const moodColor = bull>bear ? 'var(--green)' : bear>bull ? 'var(--red)' : 'var(--gold2)';
 
-  // Filter & sort — identik dengan getFilteredAndSorted
   let filtered = [...allData];
   if (cat !== 'all') filtered = filtered.filter(n => n.category === cat);
   if (sort === 'impact') {
@@ -404,16 +447,78 @@ export default function PageNews({ active }: { active: boolean }) {
   const medItems  = allData.filter(n => n.impact==='medium'||n.impact==='med' as unknown).slice(0,2);
   const hasSpec   = highItems.length > 0 || medItems.length > 0;
 
-  const resetAICache = () => {
+  // ── Phase 14: Reset AI cache + reload ────────────────────────────────────
+  const resetAICache = useCallback(async () => {
+    await clearCache();
     localStorage.removeItem(NEWS_CACHE_KEY);
     localStorage.removeItem('jz_news_ai_summary');
-    loadNews(true); loadCalendar();
-  };
+    await loadNews(true);
+    await loadCalendar();
+  }, [clearCache, loadNews, loadCalendar]);
 
   // ── calTitle parse helper ─────────────────────────────────────────────────
   const calTitleParts = calTitle.split('—');
   const calTitleMain = calTitleParts[0]?.trim() || '';
   const calTitleDate = calTitleParts[1]?.trim() || '';
+
+  // ── Spec item renderer — identik dengan specItemHtml() di source ─────────
+  const renderSpecItem = (n: NewsItem, sid: string, isLast: boolean) => {
+    const hasKey = !!(readLS('jz_gemini_news_key') || readLS('jz_gemini_key'));
+
+    // Phase 14: noAI block — tombol clickable untuk buka ApiKeyModal
+    const noAiBlock = (!n.analysis && !n.speculation) ? (
+      <div className="spec-no-ai">
+        {aiLoading ? (
+          <span>⏳ Analisis disiapkan...</span>
+        ) : hasKey ? (
+          <span>⏳ Analisis disiapkan, refresh untuk update</span>
+        ) : (
+          <button
+            style={{background:'none',border:'none',color:'var(--gold2)',fontSize:'10px',cursor:'pointer',padding:'0',fontFamily:'inherit'}}
+            onClick={onOpenApiKeyModal}
+          >
+            ⚡ Aktifkan AI untuk analisis otomatis
+          </button>
+        )}
+      </div>
+    ) : null;
+
+    return (
+      <div key={sid} className={`spec-item${isLast ? ' spec-item-last' : ''}`}>
+        <div className="spec-item-header">
+          <span className={`news-card-cat ${n.category}`}>{getCatLabel(n.category)}</span>
+          <span className={`news-card-impact ${n.impact}`}>{n.impact==='high'?'🔴 High':n.impact==='medium'?'🟡 Medium':'🟢 Low'}</span>
+          {n.pairs?.slice(0,3).map(p => <span key={p} className="chip chip-gold" style={{fontSize:'8px'}}>{p}</span>)}
+          {n.source && <span className="spec-source">{escHtml(n.source)}</span>}
+        </div>
+        <div className="spec-news-title">{n.title}</div>
+
+        {n.analysis || n.speculation ? (
+          !expandedSpec[sid] ? (
+            <div className="spec-preview">
+              {n.headline && <div className="spec-headline">{n.headline}</div>}
+              {n.desc || (n.analysis||'').slice(0,120)}
+              {' '}
+              <button className="spec-readmore" onClick={() => setExpandedSpec(p=>({...p,[sid]:true}))}>▾ Baca selengkapnya</button>
+            </div>
+          ) : (
+            <div className="spec-full">
+              {n.analysis && <div className="spec-analysis-full">{n.analysis}</div>}
+              {n.scenario_bear && <div className="spec-scenario bear"><span>🔴 Bearish:</span> {n.scenario_bear}</div>}
+              {n.scenario_bull && <div className="spec-scenario bull"><span>🟢 Bullish:</span> {n.scenario_bull}</div>}
+              {n.speculation && (
+                <div className="spec-analysis">
+                  <span className="spec-badge spekulasi">🎯 Bias</span>
+                  <span>{n.speculation}</span>
+                </div>
+              )}
+              <button className="spec-readmore" style={{marginTop:'6px'}} onClick={() => setExpandedSpec(p=>({...p,[sid]:false}))}>▴ Sembunyikan</button>
+            </div>
+          )
+        ) : noAiBlock}
+      </div>
+    );
+  };
 
   return (
     <section id="page-news" className={`page${active?' active':''}`}>
@@ -433,6 +538,19 @@ export default function PageNews({ active }: { active: boolean }) {
           <button className="btn btn-ghost btn-sm" onClick={resetAICache}>🗑 Reset AI Cache</button>
         </div>
       </div>
+
+      {/* ── Phase 14: AI Loading indicator ──────────────────────────────── */}
+      {aiLoading && (
+        <div style={{
+          display:'flex',alignItems:'center',gap:'10px',
+          padding:'10px 16px',marginBottom:'12px',
+          background:'var(--gold-bg)',border:'1px solid var(--gold-bd)',borderRadius:'9px',
+          fontFamily:"'JetBrains Mono',monospace",fontSize:'10px',color:'var(--gold2)',
+        }}>
+          <span style={{animation:'spin 1s linear infinite',display:'inline-block',fontSize:'14px'}}>⟳</span>
+          <span>AI sedang menganalisis berita — harap tunggu...</span>
+        </div>
+      )}
 
       {/* ── Ticker ──────────────────────────────────────────────────────── */}
       <div className="ticker ai-anim d1" id="news-ticker-wrap" style={{marginBottom:'20px'}}>
@@ -592,38 +710,9 @@ export default function PageNews({ active }: { active: boolean }) {
                     <span>HIGH IMPACT</span>
                     <span className="spec-section-count">{highItems.length} event</span>
                   </div>
-                  {highItems.map((n, i) => {
-                    const sid = 'h'+i;
-                    return (
-                      <div key={sid} className={`spec-item${i===highItems.length-1&&medItems.length===0?' spec-item-last':''}`}>
-                        <div className="spec-item-header">
-                          <span className={`news-card-cat ${n.category}`}>{getCatLabel(n.category)}</span>
-                          <span className={`news-card-impact ${n.impact}`}>{n.impact==='high'?'🔴 High':n.impact==='medium'?'🟡 Medium':'🟢 Low'}</span>
-                          {n.pairs?.slice(0,3).map(p => <span key={p} className="chip chip-gold" style={{fontSize:'8px'}}>{p}</span>)}
-                          {n.source && <span className="spec-source">{escHtml(n.source)}</span>}
-                        </div>
-                        <div className="spec-news-title">{n.title}</div>
-                        {n.analysis||n.speculation ? (
-                          !expandedSpec[sid] ? (
-                            <div className="spec-preview">
-                              {n.desc||(n.analysis||'').slice(0,120)}
-                              <button className="spec-readmore" onClick={() => setExpandedSpec(p=>({...p,[sid]:true}))}>▾ Baca selengkapnya</button>
-                            </div>
-                          ) : (
-                            <div className="spec-full">
-                              {n.analysis && <div className="spec-analysis-full">{n.analysis}</div>}
-                              {n.scenario_bear && <div className="spec-scenario bear"><span>🔴 Bearish:</span> {n.scenario_bear}</div>}
-                              {n.scenario_bull && <div className="spec-scenario bull"><span>🟢 Bullish:</span> {n.scenario_bull}</div>}
-                              {n.speculation && <div className="spec-analysis"><span className="spec-badge spekulasi">🎯 Bias</span><span>{n.speculation}</span></div>}
-                              <button className="spec-readmore" style={{marginTop:'6px'}} onClick={() => setExpandedSpec(p=>({...p,[sid]:false}))}>▴ Sembunyikan</button>
-                            </div>
-                          )
-                        ) : (
-                          <div className="spec-no-ai">⚡ Aktifkan AI untuk analisis otomatis</div>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {highItems.map((n, i) =>
+                    renderSpecItem(n, 'h'+i, i===highItems.length-1 && medItems.length===0)
+                  )}
                 </>
               )}
               {/* MARKET UPDATE */}
@@ -634,21 +723,9 @@ export default function PageNews({ active }: { active: boolean }) {
                     <span>MARKET UPDATE</span>
                     <span className="spec-section-count">{medItems.length} berita</span>
                   </div>
-                  {medItems.map((n, i) => {
-                    const sid = 'm'+i;
-                    return (
-                      <div key={sid} className={`spec-item${i===medItems.length-1?' spec-item-last':''}`}>
-                        <div className="spec-item-header">
-                          <span className={`news-card-cat ${n.category}`}>{getCatLabel(n.category)}</span>
-                          <span className={`news-card-impact ${n.impact}`}>{n.impact==='high'?'🔴 High':n.impact==='medium'?'🟡 Medium':'🟢 Low'}</span>
-                          {n.pairs?.slice(0,3).map(p => <span key={p} className="chip chip-gold" style={{fontSize:'8px'}}>{p}</span>)}
-                          {n.source && <span className="spec-source">{escHtml(n.source)}</span>}
-                        </div>
-                        <div className="spec-news-title">{n.title}</div>
-                        <div className="spec-no-ai">⚡ Aktifkan AI untuk analisis otomatis</div>
-                      </div>
-                    );
-                  })}
+                  {medItems.map((n, i) =>
+                    renderSpecItem(n, 'm'+i, i===medItems.length-1)
+                  )}
                 </>
               )}
             </div>

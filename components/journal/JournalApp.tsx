@@ -88,7 +88,7 @@ export default function JournalApp() {
         <PageFilter active={activePage === 'filter'} />
         <PageWeekly active={activePage === 'weekly'} />
         <PageMonthly active={activePage === 'monthly'} />
-        <PageNews active={activePage === 'news'} />
+        <PageNews active={activePage === 'news'} onOpenApiKeyModal={() => setApiKeyOpen(true)} />
       </div>
       <BottomNav />
       <ConfirmModal />

@@ -15,6 +15,9 @@ export const metadata: Metadata = {
 
 // Next.js 14: themeColor wajib di viewport export
 export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
   themeColor: '#C9A84C',
 };
 

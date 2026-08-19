@@ -73,7 +73,6 @@ export function useRiskForm() {
       setConvertInfo(txt);
     }
     localStorage.setItem('jz_currency', cur);
-    // NOTE: sync ke page-data (Phase 5) — dikerjakan saat useDataStore dibuat
   }, []);
 
   // ── updateConvertHint (index.html baris 3855-3869) ──
@@ -207,8 +206,23 @@ export function useRiskForm() {
 
     const concText = `Dengan saldo awal <strong>${balDisp}</strong>, risiko <strong>${riskVal}%</strong>, target <strong>${tgtDisp}</strong> dalam <strong>${monthsVal} bulan</strong>, fokus pair <strong>${pair}</strong>. Akun: <strong>${tipeAkun}</strong>, lot ideal <strong>${recLot}</strong>, SL <strong>${sl}</strong>. Profil: <strong>${profil.l}</strong>.${leverageNote} Saran: <em>${mindset}</em> 🚀`;
 
-    // Simpan state ke localStorage — sama seperti aslinya (baris 4390)
-    const state = { balance, target, balanceInput, targetInput, inputCurrency: currency, risk: riskVal, months: monthsVal, pair, leverage: leverageVal, tipeAkun, currency };
+    // FIX: simpan balanceRaw & targetRaw sebagai string display agar restore bisa
+    // langsung set ke input field tanpa konversi ulang
+    const state = {
+      balance,
+      target,
+      balanceInput,
+      targetInput,
+      balanceRaw,           // ← TAMBAHAN: string display asli (e.g. "3.000.000")
+      targetRaw,            // ← TAMBAHAN: string display asli (e.g. "10.000.000")
+      inputCurrency: currency,
+      currency,
+      risk: riskVal,
+      months: monthsVal,
+      pair,
+      leverage: leverageVal,
+      tipeAkun,
+    };
     localStorage.setItem('jz_state', JSON.stringify(state));
 
     setResult({
@@ -234,13 +248,16 @@ export function useRiskForm() {
         setPair(''); setPipval(''); setLeverage('');
         setPipvalHint(''); setLeverageHint('Leverage mempengaruhi margin yang dibutuhkan per trade dan profil risiko akun.');
         setLeverageWarn(false); setResult(null);
-        setCurrency('IDR');
+        setCurrencyState('IDR');
+        localStorage.removeItem('jz_state');
+        localStorage.setItem('jz_currency', 'IDR');
       }
     );
   }, [showConfirmModal]);
 
   // ── calcFromValues: hitung result langsung dari nilai tanpa lewat state ──
-  // Dipakai oleh PageRisk untuk auto-calc saat restore dari localStorage
+  // Dipakai oleh PageRisk untuk auto-calc saat restore dari localStorage.
+  // FIX: validasi lebih toleran — risk & months boleh NaN (pakai fallback)
   const calcFromValues = useCallback((
     balRaw: string, tgtRaw: string, cur: Currency,
     riskStr: string, monthsStr: string, pairStr: string, levStr: string
@@ -250,10 +267,16 @@ export function useRiskForm() {
     const targetInput = parseInputVal(tgtRaw, cur);
     const balance = inputToIDR(balanceInput, cur);
     const target = inputToIDR(targetInput, cur);
-    const riskVal = parseFloat(riskStr);
-    const monthsVal = parseInt(monthsStr);
+
+    // FIX: tolak NaN & 0 untuk balance/target/leverage saja — minimum wajib ada
     const leverageVal = parseInt(levStr) || 0;
     if (!balance || !target || target <= balance || !leverageVal) return;
+
+    // FIX: risk & months boleh kosong/NaN → pakai default agar tetap bisa render
+    const riskVal = parseFloat(riskStr);
+    const monthsVal = parseInt(monthsStr);
+    const safeRisk = isNaN(riskVal) ? 2 : riskVal;
+    const safeMonths = isNaN(monthsVal) ? 1 : monthsVal;
 
     const toDisp = (v: number) => cur === 'CENT'
       ? Math.round((v / kurs) * 100 * 10) / 10
@@ -265,13 +288,13 @@ export function useRiskForm() {
     const lotAkhirPlan = getLotByBal(tgtForLot, cur);
     const fmt = (v: number) => Math.max(0.01, v).toFixed(2);
     let recLot = lotAwalPlan === lotAkhirPlan ? fmt(lotAwalPlan) : fmt(lotAwalPlan) + '—' + fmt(lotAkhirPlan);
-    if (riskVal >= 3) recLot += ' ⚠️';
+    if (safeRisk >= 3) recLot += ' ⚠️';
 
     const tipeAkun = getTipeAkun(balForLot, cur);
     const layer = getLayer(balForLot, cur);
     const sl = getSL(pairStr);
-    const profil = getProfil(riskVal);
-    const mindset = getMindset(riskVal);
+    const profil = getProfil(safeRisk);
+    const mindset = getMindset(safeRisk);
     const growthBulanRp = target - balance;
     const growthBulanPct = ((target / balance) - 1) * 100;
 
@@ -316,7 +339,7 @@ export function useRiskForm() {
     const leverageNote = leverageHighRisk
       ? ` Leverage <strong>${leverageLabel}</strong> sangat tinggi — <em>waspadai margin call di kondisi volatil</em>.`
       : ` Leverage <strong>${leverageLabel}</strong>, margin per trade <strong>${marginDisp}</strong>.`;
-    const concText = `Dengan saldo awal <strong>${balDisp}</strong>, risiko <strong>${riskVal}%</strong>, target <strong>${tgtDisp}</strong> dalam <strong>${monthsVal} bulan</strong>, fokus pair <strong>${pairStr}</strong>. Akun: <strong>${tipeAkun}</strong>, lot ideal <strong>${recLot}</strong>, SL <strong>${sl}</strong>. Profil: <strong>${profil.l}</strong>.${leverageNote} Saran: <em>${mindset}</em> 🚀`;
+    const concText = `Dengan saldo awal <strong>${balDisp}</strong>, risiko <strong>${safeRisk}%</strong>, target <strong>${tgtDisp}</strong> dalam <strong>${safeMonths} bulan</strong>, fokus pair <strong>${pairStr}</strong>. Akun: <strong>${tipeAkun}</strong>, lot ideal <strong>${recLot}</strong>, SL <strong>${sl}</strong>. Profil: <strong>${profil.l}</strong>.${leverageNote} Saran: <em>${mindset}</em> 🚀`;
 
     setResult({
       rows,
@@ -328,7 +351,6 @@ export function useRiskForm() {
     });
   }, []);
 
-  // tambah onTargetInput
   const onTargetInput = useCallback((val: string, cur: Currency) => {
     let v = val;
     if (cur === 'IDR') {

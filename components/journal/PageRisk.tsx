@@ -1,15 +1,17 @@
 // components/journal/PageRisk.tsx
-// Dipindah dari index.html baris 2163-2305 (markup) + useRiskForm hook.
-// Logic: doCalc, onPairChange, onLeverageChange, setCurrency, resetRisk —
-// semuanya ada di hooks/useRiskForm.ts, di sini cuma render.
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRates } from '@/hooks/useRates';
 import { useRiskForm } from '@/hooks/useRiskForm';
+import { liveRates } from '@/lib/riskCalc';
 import type { Currency } from '@/lib/riskCalc';
 
 export default function PageRisk({ active }: { active: boolean }) {
+  // FIX: mounted flag — pastikan localStorage hanya diakses di client
+  // Ini mencegah hydration mismatch yang bikin soft refresh kosong
+  const [mounted, setMounted] = useState(false);
+
   const { ticker } = useRates();
   const {
     currency, setCurrency, balanceRaw, setBalanceRaw, targetRaw, setTargetRaw,
@@ -20,8 +22,9 @@ export default function PageRisk({ active }: { active: boolean }) {
     CURRENCY_PRE, CURRENCY_PH, CURRENCY_PHT,
   } = useRiskForm();
 
-  // Restore saved state saat pertama mount
   useEffect(() => {
+    setMounted(true);
+
     try {
       const savedCur = (localStorage.getItem('jz_currency') as Currency) || 'IDR';
       setCurrency(savedCur);
@@ -32,21 +35,17 @@ export default function PageRisk({ active }: { active: boolean }) {
       const cur: Currency = saved.currency || saved.inputCurrency || savedCur;
       const kurs = liveRates?.USD_IDR || 16462;
 
-      // FIX: prioritaskan balanceRaw/targetRaw (string display yang disimpan
-      // sejak versi baru), fallback ke konversi dari angka IDR untuk data lama
+      // Prioritas: balanceRaw (string display) → balanceInput (angka cur) → balance (IDR)
       let balStr = '';
       let tgtStr = '';
 
       if (saved.balanceRaw) {
-        // ✅ Data baru: langsung pakai string display yang sudah tersimpan
         balStr = saved.balanceRaw;
       } else if (saved.balanceInput != null && !isNaN(saved.balanceInput)) {
-        // ⬇️ Fallback data lama: balanceInput = hasil parseInputVal (angka dalam cur)
         balStr = cur === 'IDR'
           ? Math.round(saved.balanceInput).toLocaleString('id-ID')
           : String(saved.balanceInput);
       } else if (saved.balance && !isNaN(saved.balance)) {
-        // ⬇️ Fallback paling lama: balance = angka IDR mentah
         balStr = cur === 'CENT'
           ? ((saved.balance / kurs) * 100).toFixed(1)
           : cur === 'USD'
@@ -68,7 +67,6 @@ export default function PageRisk({ active }: { active: boolean }) {
           : Math.round(saved.target).toLocaleString('id-ID');
       }
 
-      // FIX: validasi nilai sebelum set — jangan set string "NaN" ke state
       const riskNum = parseFloat(saved.risk);
       const monthsNum = parseInt(saved.months);
       const riskStr = isNaN(riskNum) ? '' : String(riskNum);
@@ -76,7 +74,6 @@ export default function PageRisk({ active }: { active: boolean }) {
       const pairStr = saved.pair || '';
       const levStr = saved.leverage ? String(saved.leverage) : '';
 
-      // Set semua state sekaligus
       if (balStr) setBalanceRaw(balStr);
       if (tgtStr) setTargetRaw(tgtStr);
       if (riskStr) setRisk(riskStr);
@@ -84,8 +81,6 @@ export default function PageRisk({ active }: { active: boolean }) {
       if (pairStr) onPairChange(pairStr, cur);
       if (levStr) onLeverageChange(levStr);
 
-      // Hitung result LANGSUNG dari nilai — tidak perlu tunggu state flush
-      // Ini persis seperti doCalc() di index.html yang dipanggil synchronous
       if (balStr && tgtStr && levStr) {
         calcFromValues(balStr, tgtStr, cur, riskStr, monthsStr, pairStr, levStr);
       }
@@ -95,6 +90,22 @@ export default function PageRisk({ active }: { active: boolean }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Render ticker items sebagai string inline — sama persis dengan innerHTML asli
+  // Ini fix tampilan kurs yang acak-acakan akibat React element wrap
+  const tickerInner = ticker.items.length === 0
+    ? null
+    : ticker.items.map((item, i) => (
+        <span key={item.p} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+          <span className="ticker-item" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span className="ticker-pair">{item.p}</span>
+            <span className="ticker-rate">{item.r}</span>
+          </span>
+          {i < ticker.items.length - 1 && (
+            <span style={{ color: 'var(--text4)', fontSize: 8, margin: '0 2px' }}>|</span>
+          )}
+        </span>
+      ));
 
   return (
     <div className={`page ${active ? 'active' : ''}`} id="page-risk">
@@ -113,21 +124,17 @@ export default function PageRisk({ active }: { active: boolean }) {
       <div className="ticker ai-anim d1" id="ticker-wrap">
         <div className="ticker-dot"></div>
         <div className="ticker-label">Live Kurs</div>
-        <div className="ticker-items" id="ticker-items">
+        <div
+          className="ticker-items"
+          id="ticker-items"
+          style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'nowrap', gap: 0, overflow: 'hidden' }}
+        >
           {ticker.items.length === 0
             ? <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '9.5px', color: 'var(--text3)' }}>Memuat...</span>
-            : ticker.items.map((item, i) => (
-              <span key={item.p}>
-                <div className="ticker-item">
-                  <span className="ticker-pair">{item.p}</span>
-                  <span className="ticker-rate">{item.r}</span>
-                </div>
-                {i < ticker.items.length - 1 && <span style={{ color: 'var(--text4)', fontSize: 8 }}>|</span>}
-              </span>
-            ))
+            : tickerInner
           }
         </div>
-        <div className="ticker-time" id="ticker-time">{ticker.timeLabel}</div>
+        <div className="ticker-time" id="ticker-time">{mounted ? ticker.timeLabel : ''}</div>
       </div>
 
       {/* FORM + RESULTS */}
@@ -254,7 +261,6 @@ export default function PageRisk({ active }: { active: boolean }) {
                   </div>
                   {pipvalHint && <div className="fhint">{pipvalHint}</div>}
                 </div>
-                {/* Hidden select untuk sinkronisasi — sama seperti aslinya */}
                 <select id="q-currency" value={currency} onChange={() => {}} style={{ display: 'none' }}>
                   <option value="IDR">IDR</option><option value="CENT">CENT</option><option value="USD">USD</option>
                 </select>

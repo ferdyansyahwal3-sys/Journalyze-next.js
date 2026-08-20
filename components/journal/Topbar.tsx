@@ -38,7 +38,11 @@ export default function Topbar({
   const toggleUserMenu = useJournalStore((s) => s.toggleUserMenu);
   const { doLogout }   = useJournalAuth();
 
-  const email = currentUser?.email || '';
+  const email       = currentUser?.email || '';
+  const displayName = useJournalStore((s) => s.displayName);
+  // Tampilkan: nama dari profiles → fallback username email
+  const nameLabel   = displayName || email.split('@')[0] || '';
+  const avatarChar  = (displayName[0] || email[0] || '?').toUpperCase();
 
   return (
     <nav className="topbar">
@@ -97,8 +101,8 @@ export default function Topbar({
         style={{ display: currentUser ? 'flex' : 'none' }}
         onClick={toggleUserMenu}
       >
-        <div className="user-avatar">{(email[0] || '?').toUpperCase()}</div>
-        <span className="user-email-lbl">{email}</span>
+        <div className="user-avatar">{avatarChar}</div>
+        <span className="user-email-lbl">{nameLabel}</span>
       </div>
 
       <div className={`user-menu ${userMenuOpen ? 'open' : ''}`}>

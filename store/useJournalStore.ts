@@ -1,8 +1,4 @@
 // store/useJournalStore.ts
-// Pengganti variabel global & DOM state di index.html:
-// window._currentUser, activePage (lewat class .page.active),
-// theme (data-theme attr), splash/auth overlay visibility,
-// user-menu/more-drawer open state, toast-root, cmodal-overlay.
 import { create } from 'zustand';
 import type { User } from '@supabase/supabase-js';
 
@@ -15,7 +11,6 @@ type Toast = { id: number; msg: string; type: 'success' | 'error' };
 type ConfirmState = { title: string; msg: string; confirmLabel: string; onConfirm: () => void } | null;
 
 interface JournalState {
-  // auth
   currentUser: User | null;
   authOverlayVisible: boolean;
   cloudLoading: boolean;
@@ -23,20 +18,20 @@ interface JournalState {
   setAuthOverlayVisible: (v: boolean) => void;
   setCloudLoading: (v: boolean) => void;
 
-  // splash — index.html baris 3346-3352 (auto-close 6 detik)
+  // Phase 13: display name dari tabel profiles
+  displayName: string;
+  setDisplayName: (n: string) => void;
+
   splashHiding: boolean;
   splashHidden: boolean;
   closeSplash: () => void;
 
-  // theme — index.html baris 3353 (setTheme)
   theme: 'dark' | 'light';
   setTheme: (t: 'dark' | 'light') => void;
 
-  // navigasi — pengganti switchPage() (index.html baris 3358-3385)
   activePage: JournalPage;
   setActivePage: (p: JournalPage) => void;
 
-  // topbar / drawer
   userMenuOpen: boolean;
   toggleUserMenu: () => void;
   closeUserMenu: () => void;
@@ -44,12 +39,10 @@ interface JournalState {
   toggleMoreDrawer: () => void;
   closeMoreDrawer: () => void;
 
-  // toast generik — pengganti toast() global (index.html baris 6063-6085)
   toasts: Toast[];
   showToast: (msg: string, type?: 'success' | 'error') => void;
   removeToast: (id: number) => void;
 
-  // confirm modal generik — pengganti showConfirmModal()/closeConfirmModal() (baris 6047-6061)
   confirmModal: ConfirmState;
   showConfirmModal: (title: string, msg: string, confirmLabel: string, onConfirm: () => void) => void;
   closeConfirmModal: () => void;
@@ -63,12 +56,14 @@ export const useJournalStore = create<JournalState>((set, get) => ({
   setAuthOverlayVisible: (authOverlayVisible) => set({ authOverlayVisible }),
   setCloudLoading: (cloudLoading) => set({ cloudLoading }),
 
+  displayName: '',
+  setDisplayName: (displayName) => set({ displayName }),
+
   splashHiding: false,
   splashHidden: false,
   closeSplash: () => {
     if (get().splashHiding || get().splashHidden) return;
     set({ splashHiding: true });
-    // index.html: setTimeout(()=>{ splash.style.display='none'; }, 850)
     setTimeout(() => set({ splashHidden: true }), 850);
   },
 
@@ -77,18 +72,12 @@ export const useJournalStore = create<JournalState>((set, get) => ({
     set({ theme });
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('jz_theme', theme);
-    // TODO Phase 4+: kalau sudah login & persistSettings tersedia, sync ke cloud
-    // juga (index.html baris 3353: if(window.persistSettings) ...)
   },
 
   activePage: 'home',
   setActivePage: (id) => {
     set({ activePage: id });
     localStorage.setItem('jz_last_tab', id);
-    // NOTE: pemanggilan render per-halaman (recalcAll/renderDataTable/renderFilter/
-    // buildPlan/dst — index.html baris 3367-3384) akan dikerjakan di masing-masing
-    // komponen halaman pada Phase 4+ lewat prop `active`, pola yang sama seperti
-    // KeysPanel/AnalyticsPanel di /admin.
   },
 
   userMenuOpen: false,

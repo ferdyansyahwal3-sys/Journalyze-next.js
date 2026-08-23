@@ -1,0 +1,593 @@
+'use client';
+
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { _sbAdmin } from '@/lib/supabaseClient';
+import Script from 'next/script';
+
+const WA_BASE = `https://wa.me/6281311973602`;
+const WA_MSG_DEFAULT = encodeURIComponent('Halo, saya ingin info lebih lanjut tentang Journalyze 🙏');
+const WA_MSG_BASIC = encodeURIComponent('Halo, saya mau order paket Basic Journalyze (Rp 99.000) 🙏');
+const WA_MSG_PRO = encodeURIComponent('Halo, saya mau order paket Pro Journalyze (Rp 149.000) ⭐');
+const WA_MSG_ELITE = encodeURIComponent('Halo, saya mau order paket Elite Journalyze (Rp 249.000) 🔥');
+const wa = (msg: string) => `${WA_BASE}?text=${msg}`;
+
+const TOASTS = [
+  { name: 'Budi S.', action: 'membeli Paket Pro', time: '2 menit lalu', emoji: '📈' },
+  { name: 'Rahmad F.', action: 'membeli Paket Lifetime', time: '7 menit lalu', emoji: '💰' },
+  { name: 'Dewi A.', action: 'bergabung dengan Journalyze', time: '12 menit lalu', emoji: '🏆' },
+  { name: 'Andi P.', action: 'membeli Paket Elite', time: '18 menit lalu', emoji: '🎯' },
+  { name: 'Siti R.', action: 'membeli Paket Pro', time: '25 menit lalu', emoji: '📊' },
+];
+
+const FEATURES = [
+  { icon: '⚡', title: 'Kalkulator Risiko Real-Time', desc: 'Hitung lot size, pip value, dan risiko per trade secara otomatis. Input balance, risk %, S/L → hasil instan.' },
+  { icon: '📋', title: 'Trading Plan Terstruktur', desc: 'Catat plan sebelum entry: pair, bias, entry level, target, alasan. Disiplin mulai dari perencanaan.' },
+  { icon: '📊', title: 'Rekap Trade Lengkap', desc: 'Log setiap trade dengan detail: tanggal, pair, RR, profit/loss. Semua tersimpan aman di cloud.' },
+  { icon: '🔍', title: 'Filter & Analisis Mendalam', desc: 'Filter trade per pair, per waktu, per sesi. Temukan pola: jam terbaik, pair paling profitable.' },
+  { icon: '📅', title: 'Ringkasan Bulanan & Mingguan', desc: 'Dashboard performa otomatis per bulan. Win rate, average RR, drawdown — semua terhitung.' },
+  { icon: '📡', title: 'Share Journal Publik', desc: 'Bagikan track record trading kamu ke siapapun tanpa login. Bangun kepercayaan dan portofolio profesional.' },
+];
+
+const TABS = [
+  { id: 'risk', label: '⚡ Risiko' },
+  { id: 'plan', label: '📋 Plan' },
+  { id: 'data', label: '📊 Data' },
+  { id: 'filter', label: '🔍 Filter' },
+  { id: 'monthly', label: '📅 Bulanan' },
+];
+
+const TESTIMONIALS = [
+  { initial: 'B', name: 'Budi Santoso', role: 'Trader Forex 3 tahun', stars: 5, text: 'Jujur ini yang paling lengkap yang pernah saya coba. Kalkulator risikonya akurat, dan fitur share journal-nya keren banget buat bukti track record ke klien.', time: '10:24' },
+  { initial: 'R', name: 'Rahmad Fauzi', role: 'Swing Trader', stars: 5, text: 'Sebelum pakai Journalyze saya nggak sadar win rate saya cuma 40% tapi profit tetap karena RR bagus. Sekarang bisa lihat data detail tiap bulan.', time: '14:08' },
+  { initial: 'D', name: 'Dewi Anggraeni', role: 'Trader Pemula', stars: 5, text: 'Sebagai pemula, fitur trading plan-nya sangat membantu biar saya nggak FOMO entry. E-book Candlestick bonusnya juga langsung bisa dipraktikkan.', time: '09:33' },
+  { initial: 'A', name: 'Andi Pratama', role: 'Full-time Trader', stars: 5, text: 'Dashboard bulanannya bersih dan informatif. Saya bisa langsung tahu bulan mana yang jelek dan kenapa. Wajib punya buat yang serius di trading.', time: '16:45' },
+  { initial: 'S', name: 'Siti Rahayu', role: 'Price Action Trader', stars: 5, text: 'Filter per pair-nya ini yang saya cari dari dulu. Sekarang saya tahu bahwa XAUUSD adalah pair paling profitable buat saya. Recommended banget!', time: '11:17' },
+];
+
+const FAQS = [
+  { q: 'Apakah data trading saya aman?', a: 'Ya, semua data disimpan di Supabase dengan enkripsi enterprise. Data Anda hanya bisa diakses dengan akun Anda sendiri.' },
+  { q: 'Bisa diakses dari HP?', a: 'Journalyze adalah Progressive Web App (PWA) yang dioptimalkan untuk mobile. Bisa diinstall di homescreen Android/iOS.' },
+  { q: 'Apakah ada biaya tambahan setelah beli?', a: 'Tidak ada. Paket Pro dan Elite adalah akses lifetime — bayar sekali, pakai selamanya termasuk semua update fitur.' },
+  { q: 'Bagaimana cara mendapatkan akses setelah pembayaran?', a: 'Kirim bukti pembayaran via WhatsApp ke 081311973602. Kami akan aktivasi akun dalam maksimal 1x24 jam.' },
+];
+
+function useCountdown() {
+  const [state, setState] = useState({ h: '23', m: '59', s: '59' });
+  useEffect(() => {
+    const KEY = 'jz_home_cd';
+    const stored = localStorage.getItem(KEY);
+    let target = stored ? parseInt(stored) : 0;
+    if (!target || target <= Date.now()) {
+      target = Date.now() + 24 * 60 * 60 * 1000;
+      localStorage.setItem(KEY, String(target));
+    }
+    const tick = () => {
+      const diff = Math.max(0, target - Date.now());
+      setState({
+        h: String(Math.floor(diff / 3600000)).padStart(2, '0'),
+        m: String(Math.floor((diff % 3600000) / 60000)).padStart(2, '0'),
+        s: String(Math.floor((diff % 60000) / 1000)).padStart(2, '0'),
+      });
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+  return state;
+}
+
+export default function HomeApp() {
+  const cd = useCountdown();
+  const [activeTab, setActiveTab] = useState('risk');
+  const [sliderIdx, setSliderIdx] = useState(0);
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastData, setToastData] = useState(TOASTS[0]);
+  const [pixelId, setPixelId] = useState<string | null>(null);
+  const [pixelEnabled, setPixelEnabled] = useState(false);
+  const [navScrolled, setNavScrolled] = useState(false);
+  const sliderRef = useRef<HTMLDivElement>(null);
+  const maxIdx = TESTIMONIALS.length - 3;
+
+  useEffect(() => {
+    const els = document.querySelectorAll<HTMLElement>('.reveal,.reveal-left,.reveal-right');
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => { if (e.isIntersecting) { (e.target as HTMLElement).classList.add('visible'); io.unobserve(e.target); } });
+    }, { threshold: 0.12 });
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const h = () => setNavScrolled(window.scrollY > 40);
+    window.addEventListener('scroll', h, { passive: true });
+    return () => window.removeEventListener('scroll', h);
+  }, []);
+
+  useEffect(() => {
+    let idx = 0;
+    const show = () => {
+      setToastData(TOASTS[idx % TOASTS.length]);
+      setToastVisible(true);
+      idx++;
+      setTimeout(() => setToastVisible(false), 5000);
+    };
+    const id = setInterval(show, 40000);
+    const fid = setTimeout(show, 8000);
+    return () => { clearInterval(id); clearTimeout(fid); };
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await _sbAdmin.from('settings').select('key,value').in('key', ['pixel_id', 'pixel_enabled']);
+        if (!data) return;
+        const pid = data.find((r: {key:string}) => r.key === 'pixel_id')?.value || '';
+        const pen = data.find((r: {key:string}) => r.key === 'pixel_enabled')?.value === 'true';
+        if (pid) setPixelId(pid);
+        setPixelEnabled(pen);
+      } catch { /**/ }
+    })();
+  }, []);
+
+  const slideTo = useCallback((i: number) => {
+    const c = Math.max(0, Math.min(i, maxIdx));
+    setSliderIdx(c);
+    if (sliderRef.current) sliderRef.current.style.transform = `translateX(-${c * 320}px)`;
+  }, [maxIdx]);
+
+  const bars = [20,45,30,65,50,80,35,90,60,75,40,55,70,85,45,60,30,72,88,50];
+
+  return (
+    <>
+      {pixelId && pixelEnabled && (
+        <Script id="meta-pixel" strategy="afterInteractive" dangerouslySetInnerHTML={{ __html: `
+          !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+          fbq('init','${pixelId}');fbq('track','PageView');
+        ` }} />
+      )}
+
+      {/* NAVBAR */}
+      <nav className={`home-navbar${navScrolled ? ' scrolled' : ''}`}>
+        <a href="/home" className="nav-logo">Journal<em>yze</em><span className="logo-badge">v2.0</span></a>
+        <div className="nav-right">
+          <div className="nav-countdown">
+            <span>🔥</span><span>Penawaran berakhir:</span>
+            <span className="time-val">{cd.h}:{cd.m}:{cd.s}</span>
+          </div>
+          <a href={wa(WA_MSG_DEFAULT)} target="_blank" rel="noopener noreferrer" className="nav-cta"><span>Mulai Sekarang</span><span>↗</span></a>
+        </div>
+      </nav>
+
+      {/* HERO */}
+      <section className="hero-section">
+        <div className="hero-bg" /><div className="hero-grid-lines" />
+        <div className="hero-content">
+          <div className="hero-tag reveal"><span className="dot" /><span>Platform Jurnal Trading Profesional Indonesia</span></div>
+          <h1 className="hero-headline reveal">
+            <span className="line1">Berhenti Tebak-tebak.</span>
+            <span className="line2">Mulai Catat, Analisis,</span>
+            <span className="line3">dan Naik Level sebagai Trader.</span>
+          </h1>
+          <p className="hero-sub reveal delay-1">Journalyze adalah jurnal trading web app profesional yang membantu kamu mencatat setiap trade, menganalisis performa, dan menemukan pola kemenangan yang konsisten.</p>
+          <div className="hero-countdown reveal delay-2">
+            <span className="countdown-label">Harga spesial berakhir dalam</span>
+            <div className="countdown-blocks">
+              <div className="cblock"><span className="val">{cd.h}</span><span className="lbl">Jam</span></div>
+              <span className="sep">:</span>
+              <div className="cblock"><span className="val">{cd.m}</span><span className="lbl">Menit</span></div>
+              <span className="sep">:</span>
+              <div className="cblock"><span className="val">{cd.s}</span><span className="lbl">Detik</span></div>
+            </div>
+          </div>
+          <div className="hero-cta-wrap reveal delay-3">
+            <a href={wa(WA_MSG_PRO)} target="_blank" rel="noopener noreferrer" className="btn-primary-gold"><span>💬</span><span>Dapatkan Akses Sekarang</span></a>
+            <a href={wa(WA_MSG_DEFAULT)} target="_blank" rel="noopener noreferrer" className="btn-secondary-outline"><span>Tanya-tanya dulu →</span></a>
+          </div>
+          <div className="hero-mockup reveal delay-4">
+            <div className="mockup-frame">
+              <div className="mockup-topbar">
+                <div className="mockup-brand">Journal<em>yze</em></div>
+                <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:'var(--text3)'}}>⚡ Dashboard Aktif</div>
+              </div>
+              <div className="mockup-stats">
+                {[{l:'Win Rate',v:'68%',c:'green'},{l:'Total Trade',v:'142',c:'gold'},{l:'Avg RR',v:'1.8',c:'gold'},{l:'Net P/L',v:'+$1,284',c:'green'}].map(s=>(
+                  <div key={s.l} className="mockup-stat"><div className="ms-lbl">{s.l}</div><div className={`ms-val ${s.c}`}>{s.v}</div></div>
+                ))}
+              </div>
+              <div className="mockup-chart-placeholder">
+                {bars.map((h,i)=><div key={i} className={`mockup-bar${h>60?' green':h<30?' red':''}`} style={{height:`${h}%`}}/>)}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="section-divider"/>
+
+      {/* PROBLEM */}
+      <section className="home-section">
+        <div className="section-header">
+          <div className="section-badge reveal"><span className="dot"/><span>Problem Trader</span></div>
+          <h2 className="section-title reveal">Kenapa 95% Trader Retail<br/><span className="gold-text">Gagal Konsisten?</span></h2>
+          <p className="section-sub reveal delay-1">Bukan karena strategi yang salah. Tapi karena mereka tidak pernah mencatat, menganalisis, dan belajar dari kesalahan yang sama.</p>
+        </div>
+        <div className="problem-grid">
+          {[
+            {n:'01',icon:'😵',title:'Trading Tanpa Catatan',desc:'Kamu mengulangi kesalahan yang sama berulang kali tanpa sadar. Tanpa data, tidak ada yang bisa diperbaiki.'},
+            {n:'02',icon:'🎲',title:'Risiko Asal-asalan',desc:'Entry dengan lot sembarangan karena tidak ada kalkulator risiko. Satu trade buruk bisa habiskan seminggu profit.'},
+            {n:'03',icon:'🙈',title:'Tidak Tahu Kekuatan Sendiri',desc:'Tidak tahu pair mana yang paling profitable, jam berapa win rate paling tinggi, atau setup mana yang paling konsisten.'},
+          ].map((p,i)=>(
+            <div key={p.n} className={`problem-card reveal delay-${i+1}`}>
+              <div className="problem-number">{p.n}</div>
+              <span className="problem-icon">{p.icon}</span>
+              <h3 className="problem-title">{p.title}</h3>
+              <p className="problem-desc">{p.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div className="section-divider"/>
+
+      {/* SOLUTION */}
+      <section className="solution-section">
+        <div className="solution-inner">
+          <div className="section-header">
+            <div className="section-badge reveal"><span className="dot"/><span>Solusi Lengkap</span></div>
+            <h2 className="section-title reveal">Semua yang Kamu Butuhkan<br/><em className="gold-text">dalam Satu Platform</em></h2>
+            <p className="section-sub reveal delay-1">Journalyze dirancang khusus untuk trader Forex Indonesia yang serius ingin naik level ke konsistensi nyata.</p>
+          </div>
+          <div className="feature-grid">
+            {FEATURES.map((f,i)=>(
+              <div key={f.title} className={`feature-card reveal delay-${(i%3)+1}`}>
+                <div className="feature-icon-wrap">{f.icon}</div>
+                <h3 className="feature-title">{f.title}</h3>
+                <p className="feature-desc">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <div className="section-divider"/>
+
+      {/* INTERACTIVE MOCKUP */}
+      <section className="mockup-section">
+        <div className="section-header">
+          <div className="section-badge reveal"><span className="dot"/><span>Preview Fitur</span></div>
+          <h2 className="section-title reveal">Lihat Sendiri<br/><span className="gold-text">Tampilan Journalyze</span></h2>
+          <p className="section-sub reveal delay-1">Preview eksklusif beberapa fitur utama. Akses penuh setelah aktivasi.</p>
+        </div>
+        <div className="mockup-tabs reveal">
+          {TABS.map(t=>(
+            <button key={t.id} className={`mockup-tab${activeTab===t.id?' active':''}`} onClick={()=>setActiveTab(t.id)}>{t.label}</button>
+          ))}
+        </div>
+        <div className="mockup-lock reveal delay-1">
+          {/* RISK */}
+          <div className={`mockup-panel${activeTab==='risk'?' active':''}`}>
+            <div className="mockup-panel-header"><span style={{fontSize:16}}>⚡</span><span className="mockup-panel-title">Kalkulator Risiko & Lot Size</span></div>
+            <div className="mockup-panel-body">
+              <div className="risk-row">
+                {[{l:'Balance ($)',v:'5,000'},{l:'Risk %',v:'1.0%'},{l:'Stop Loss (pips)',v:'25'},{l:'Pair',v:'XAUUSD'},{l:'Sesi',v:'London'},{l:'Bias',v:'Bullish 📈'}].map(f=>(
+                  <div key={f.l} className="risk-field"><span className="risk-label">{f.l}</span><div className="risk-value">{f.v}</div></div>
+                ))}
+              </div>
+              <div className="risk-result">
+                <div><div className="risk-result-label">Lot Size Optimal</div><div className="risk-result-val">0.20</div></div>
+                <div><div className="risk-result-label">Max Loss</div><div className="risk-result-val" style={{color:'var(--red)'}}>$50</div></div>
+                <div><div className="risk-result-label">Target (RR 2.0)</div><div className="risk-result-val">$100</div></div>
+              </div>
+            </div>
+          </div>
+          {/* PLAN */}
+          <div className={`mockup-panel${activeTab==='plan'?' active':''}`}>
+            <div className="mockup-panel-header"><span style={{fontSize:16}}>📋</span><span className="mockup-panel-title">Trading Plan Hari Ini</span></div>
+            <div className="mockup-panel-body">
+              <div className="risk-row">
+                {[{l:'Pair',v:'EURUSD'},{l:'Timeframe',v:'H4 → M15'},{l:'Bias',v:'📈 Bullish'},{l:'Entry Zone',v:'1.08200 – 1.08350'},{l:'Target 1',v:'1.08600'},{l:'Target 2',v:'1.09000'}].map(f=>(
+                  <div key={f.l} className="risk-field"><span className="risk-label">{f.l}</span><div className="risk-value">{f.v}</div></div>
+                ))}
+              </div>
+              <div className="risk-result" style={{marginTop:16}}>
+                <div><div className="risk-result-label">Setup Basis</div><div style={{color:'var(--text)',fontSize:16,fontWeight:600,marginTop:4}}>OB + FVG di Premium Zone</div></div>
+                <div><div className="risk-result-label">Status</div><div style={{color:'var(--green)',fontSize:16,fontWeight:600,marginTop:4}}>✅ Siap Entry</div></div>
+              </div>
+            </div>
+          </div>
+          {/* DATA */}
+          <div className={`mockup-panel${activeTab==='data'?' active':''}`}>
+            <div className="mockup-panel-header"><span style={{fontSize:16}}>📊</span><span className="mockup-panel-title">Rekap Trade — Juli 2025</span></div>
+            <div className="mockup-panel-body">
+              <div className="table-mockup">
+                <table>
+                  <thead><tr><th>Tanggal</th><th>Pair</th><th>Lot</th><th>RR</th><th>P/L</th><th>Hasil</th></tr></thead>
+                  <tbody>
+                    {[{d:'02/07',p:'XAUUSD',l:'0.20',r:'2.5',pl:'+$125',w:true},{d:'03/07',p:'EURUSD',l:'0.50',r:'-1.0',pl:'-$50',w:false},{d:'05/07',p:'GBPUSD',l:'0.30',r:'3.0',pl:'+$180',w:true},{d:'08/07',p:'XAUUSD',l:'0.20',r:'2.0',pl:'+$100',w:true},{d:'10/07',p:'USDJPY',l:'0.40',r:'1.5',pl:'+$60',w:true}].map((r,i)=>(
+                      <tr key={i}>
+                        <td style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12}}>{r.d}</td>
+                        <td style={{color:'var(--gold2)',fontFamily:"'JetBrains Mono',monospace"}}>{r.p}</td>
+                        <td>{r.l}</td>
+                        <td style={{color:r.w?'var(--green)':'var(--red)'}}>{r.r}</td>
+                        <td style={{color:r.w?'var(--green)':'var(--red)',fontWeight:600}}>{r.pl}</td>
+                        <td>{r.w?<span className="badge-win">✓ Win</span>:<span className="badge-loss">✗ Loss</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          {/* FILTER */}
+          <div className={`mockup-panel${activeTab==='filter'?' active':''}`}>
+            <div className="mockup-panel-header"><span style={{fontSize:16}}>🔍</span><span className="mockup-panel-title">Analisis per Pair & Sesi</span></div>
+            <div className="mockup-panel-body">
+              <div className="risk-row" style={{marginBottom:20}}>
+                {[{l:'Best Pair',v:'XAUUSD 🥇'},{l:'Best Sesi',v:'London Open'},{l:'Win Rate XAU',v:'72%'}].map(f=>(
+                  <div key={f.l} className="risk-field"><span className="risk-label">{f.l}</span><div className="risk-value">{f.v}</div></div>
+                ))}
+              </div>
+              <div className="risk-result">
+                <div><div className="risk-result-label">Setup Terbaik Kamu</div><div style={{color:'var(--text)',fontSize:16,fontWeight:600,marginTop:4}}>Break of Structure + OB</div></div>
+                <div><div className="risk-result-label">Avg RR Setup Ini</div><div className="risk-result-val">2.3</div></div>
+              </div>
+            </div>
+          </div>
+          {/* MONTHLY */}
+          <div className={`mockup-panel${activeTab==='monthly'?' active':''}`}>
+            <div className="mockup-panel-header"><span style={{fontSize:16}}>📅</span><span className="mockup-panel-title">Ringkasan Bulanan — Juli 2025</span></div>
+            <div className="mockup-panel-body">
+              <div className="risk-row">
+                {[{l:'Total Trade',v:'24',c:''},{l:'Win',v:'17',c:'var(--green)'},{l:'Loss',v:'7',c:'var(--red)'},{l:'Win Rate',v:'70.8%',c:'var(--green)'},{l:'Avg RR',v:'2.1',c:'var(--gold2)'},{l:'Net P/L',v:'+$547',c:'var(--green)'}].map(f=>(
+                  <div key={f.l} className="risk-field"><span className="risk-label">{f.l}</span><div className="risk-value" style={{color:f.c||'inherit'}}>{f.v}</div></div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="lock-overlay">
+            <div className="lock-cta">
+              <div className="lock-badge"><span>🔒</span><span>Akses penuh tersedia setelah <strong>aktivasi</strong></span></div>
+              <a href={wa(WA_MSG_PRO)} target="_blank" rel="noopener noreferrer" className="btn-primary-gold"><span>⚡</span><span>Dapatkan Akses Penuh</span></a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="section-divider"/>
+
+      {/* EBOOK */}
+      <section className="ebook-section">
+        <div className="ebook-inner">
+          <div className="ebook-grid">
+            <div className="ebook-text reveal-left">
+              <div className="ebook-tag">🎁 Bonus Eksklusif</div>
+              <h2 className="ebook-title">Dapat 2 E-Book<br/><span className="gold-text">Trading Premium</span><br/>Gratis!</h2>
+              <p style={{color:'var(--text2)',fontSize:15,lineHeight:1.7}}>Khusus pembeli paket Pro & Elite, dapatkan 2 e-book eksklusif senilai Rp 150.000 secara GRATIS.</p>
+              <div className="ebook-list">
+                {['Panduan membaca 12 pola candlestick dengan win rate tertinggi','Support & Resistance: cara menggambar level yang valid dan actionable','Cara mengkombinasikan candlestick pattern dengan S&R untuk entry presisi','Contoh setup nyata dengan screenshot trade asli'].map(item=>(
+                  <div key={item} className="ebook-item"><span className="check">✅</span><span>{item}</span></div>
+                ))}
+              </div>
+              <a href={wa(WA_MSG_PRO)} target="_blank" rel="noopener noreferrer" className="btn-primary-gold" style={{width:'fit-content'}}><span>📚</span><span>Klaim E-Book Sekarang</span></a>
+            </div>
+            <div className="ebook-books reveal-right">
+              <div className="book-3d book-gold" style={{marginTop:24}}>
+                <div className="book-spine"/>
+                <div className="book-cover">
+                  <div><div className="book-subtitle">E-Book Bonus 01</div><div className="book-title" style={{marginTop:8}}>Panduan<br/>Candlestick<br/>Pattern</div></div>
+                  <div><div className="book-deco">🕯️</div><div className="book-author">by Journalyze</div></div>
+                </div>
+                <div className="book-badge">FREE</div>
+              </div>
+              <div className="book-3d book-blue">
+                <div className="book-spine"/>
+                <div className="book-cover">
+                  <div><div className="book-subtitle">E-Book Bonus 02</div><div className="book-title" style={{marginTop:8}}>Mastering<br/>Support &<br/>Resistance</div></div>
+                  <div><div className="book-deco">📐</div><div className="book-author">by Journalyze</div></div>
+                </div>
+                <div className="book-badge" style={{background:'var(--blue)',boxShadow:'0 4px 12px rgba(96,165,250,0.3)'}}>FREE</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="section-divider"/>
+
+      {/* PRICING */}
+      <section className="pricing-section">
+        <div className="section-header">
+          <div className="section-badge reveal"><span className="dot"/><span>Pilih Paket</span></div>
+          <h2 className="section-title reveal">Investasi Terbaik<br/><span className="gold-text">untuk Karir Trading Kamu</span></h2>
+          <p className="section-sub reveal delay-1">Pilih paket yang sesuai kebutuhanmu.</p>
+        </div>
+        <div className="pricing-grid">
+          <div className="pricing-card reveal delay-1">
+            <div className="pricing-tier">Paket Basic</div>
+            <div><div className="price-fake">Rp 149.000</div><div className="price-real">99K</div></div>
+            <div className="price-note">Akses 3 bulan · Web App Only</div>
+            <div className="pricing-divider"/>
+            <div className="pricing-features">
+              {['Akses Journalyze Web App','Kalkulator risiko & lot size','Rekap & analisis trade','Trading plan harian','Share journal publik'].map(f=>(
+                <div key={f} className="pricing-feature"><span className="pf-icon">✓</span><span>{f}</span></div>
+              ))}
+            </div>
+            <a href={wa(WA_MSG_BASIC)} target="_blank" rel="noopener noreferrer" className="btn-pricing"><span>💬</span><span>Pesan via WhatsApp</span></a>
+          </div>
+          <div className="pricing-card highlight reveal delay-2">
+            <div className="pricing-badge-top">⭐ Paling Populer</div>
+            <div className="pricing-tier gold">Paket Pro</div>
+            <div><div className="price-fake">Rp 297.000</div><div className="price-real">149K</div></div>
+            <div className="price-note">Lifetime · + E-Book + Komunitas</div>
+            <div className="pricing-divider"/>
+            <div className="pricing-features">
+              {['Semua fitur Journalyze Web App','Akses LIFETIME (bukan langganan)','2 E-Book Trading Premium (Bonus)','Akses grup komunitas trader','Konsultasi 1x via WhatsApp','Semua update fitur gratis'].map(f=>(
+                <div key={f} className="pricing-feature"><span className="pf-icon">✓</span><span>{f}</span></div>
+              ))}
+            </div>
+            <a href={wa(WA_MSG_PRO)} target="_blank" rel="noopener noreferrer" className="btn-pricing gold"><span>⚡</span><span>Pesan Paket Pro Sekarang</span></a>
+          </div>
+          <div className="pricing-card reveal delay-3">
+            <div className="pricing-tier">Paket Elite</div>
+            <div><div className="price-fake">Rp 497.000</div><div className="price-real">249K</div></div>
+            <div className="price-note">Lifetime · + Review + Konsultasi 3x</div>
+            <div className="pricing-divider"/>
+            <div className="pricing-features">
+              {['Semua fitur Paket Pro','Review journal bulanan (1x/bulan)','Konsultasi trading 3x via WhatsApp','Analisis psikologi trading','Feedback strategy personal','Prioritas support & update'].map(f=>(
+                <div key={f} className="pricing-feature"><span className="pf-icon">✓</span><span>{f}</span></div>
+              ))}
+            </div>
+            <a href={wa(WA_MSG_ELITE)} target="_blank" rel="noopener noreferrer" className="btn-pricing"><span>🔥</span><span>Pesan via WhatsApp</span></a>
+          </div>
+        </div>
+      </section>
+
+      <div className="section-divider"/>
+
+      {/* TESTIMONIAL */}
+      <section className="testimonial-section">
+        <div className="testimonial-inner">
+          <div className="section-header">
+            <div className="section-badge reveal"><span className="dot"/><span>Testimoni Pengguna</span></div>
+            <h2 className="section-title reveal">Apa Kata Trader<br/><span className="gold-text">yang Sudah Pakai Journalyze?</span></h2>
+          </div>
+          <div className="testimonial-slider-wrap reveal">
+            <div className="testimonial-track" ref={sliderRef}>
+              {TESTIMONIALS.map(t=>(
+                <div key={t.name} className="testimonial-card">
+                  <div className="testi-header">
+                    <div className="testi-avatar">{t.initial}</div>
+                    <div><div className="testi-name">{t.name}</div><div className="testi-role">{t.role}</div></div>
+                  </div>
+                  <div className="testi-stars">{Array(t.stars).fill(0).map((_,i)=><span key={i} className="testi-star">★</span>)}</div>
+                  <div className="testi-bubble">{t.text}<div className="testi-time">{t.time} ✓✓</div></div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="slider-controls">
+            <button className="slider-btn" onClick={()=>slideTo(sliderIdx-1)}>←</button>
+            <div className="slider-dots">
+              {Array(maxIdx+1).fill(0).map((_,i)=>(
+                <div key={i} className={`slider-dot${sliderIdx===i?' active':''}`} onClick={()=>slideTo(i)}/>
+              ))}
+            </div>
+            <button className="slider-btn" onClick={()=>slideTo(sliderIdx+1)}>→</button>
+          </div>
+        </div>
+      </section>
+
+      <div className="section-divider"/>
+
+      {/* FOR WHO */}
+      <section className="forwho-section">
+        <div className="section-header">
+          <div className="section-badge reveal"><span className="dot"/><span>Untuk Siapa?</span></div>
+          <h2 className="section-title reveal">Journalyze Cocok<br/><span className="gold-text">untuk Kamu?</span></h2>
+        </div>
+        <div className="forwho-grid">
+          <div className="forwho-col reveal-left">
+            <div className="forwho-header yes"><span style={{fontSize:24}}>✅</span><h3 className="forwho-header-title">Journalyze UNTUK Kamu jika:</h3></div>
+            <div className="forwho-body">
+              {['Kamu trader Forex yang ingin konsisten dan punya track record nyata','Kamu mau disiplin dengan risk management yang terukur setiap trade','Kamu ingin tahu pair, sesi, dan setup mana yang paling cocok untukmu','Kamu serius membangun karir atau bisnis sebagai trader profesional','Kamu trader pemula yang mau belajar dengan cara yang benar dari awal'].map(item=>(
+                <div key={item} className="forwho-item"><span className="forwho-icon">✅</span><span>{item}</span></div>
+              ))}
+            </div>
+          </div>
+          <div className="forwho-col reveal-right">
+            <div className="forwho-header no"><span style={{fontSize:24}}>❌</span><h3 className="forwho-header-title">BUKAN untuk Kamu jika:</h3></div>
+            <div className="forwho-body">
+              {['Kamu cari cara cepat kaya tanpa belajar dan berproses','Kamu tidak mau catat dan evaluasi trading secara rutin','Kamu masih yakin "feeling" lebih baik dari data dan analisis','Kamu tidak mau investasi untuk upgrade skill dan tools trading','Kamu trader yang sudah puas dengan hasil seadanya'].map(item=>(
+                <div key={item} className="forwho-item"><span className="forwho-icon">❌</span><span>{item}</span></div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="section-divider"/>
+
+      {/* FAQ */}
+      <section className="faq-section">
+        <div className="faq-inner">
+          <div className="section-header">
+            <div className="section-badge reveal"><span className="dot"/><span>FAQ</span></div>
+            <h2 className="section-title reveal">Pertanyaan<br/><span className="gold-text">yang Sering Ditanya</span></h2>
+          </div>
+          <div className="faq-list">
+            {FAQS.map((f,i)=>(
+              <div key={i} className={`faq-item reveal${openFaq===i?' open':''}`} style={{transitionDelay:`${i*0.1}s`}}>
+                <div className="faq-question" onClick={()=>setOpenFaq(openFaq===i?null:i)}>
+                  <span className="faq-q-text">{f.q}</span>
+                  <span className="faq-chevron">▼</span>
+                </div>
+                {openFaq===i&&<div className="faq-answer">{f.a}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* FINAL CTA */}
+      <section className="final-cta-section">
+        <div className="final-cta-bg"/>
+        <div className="final-cta-inner">
+          <div className="section-badge reveal" style={{margin:'0 auto 24px'}}><span className="dot"/><span>Mulai Hari Ini</span></div>
+          <h2 className="final-cta-title reveal">Waktunya Upgrade<br/><span className="gold-text">Cara Trading Kamu.</span></h2>
+          <p className="final-cta-sub reveal delay-1">Jangan biarkan kesalahan yang sama terus berulang.</p>
+          <div className="hero-cta-wrap reveal delay-2">
+            <a href={wa(WA_MSG_PRO)} target="_blank" rel="noopener noreferrer" className="btn-primary-gold"><span>⚡</span><span>Dapatkan Akses Sekarang — Rp 149K</span></a>
+          </div>
+          <div className="final-cta-guarantee reveal delay-3"><span>🔒</span><span>Pembayaran aman · Aktivasi cepat · Support via WhatsApp</span></div>
+        </div>
+      </section>
+
+      {/* FOOTER */}
+      <footer className="home-footer">
+        <div className="footer-inner">
+          <div className="footer-top">
+            <div className="footer-brand">
+              <div className="logo">Journal<em>yze</em></div>
+              <div className="tagline">Platform jurnal trading profesional untuk trader Forex Indonesia.</div>
+            </div>
+            <div className="footer-links">
+              <div className="footer-link-group">
+                <div className="fg-title">Produk</div>
+                <a href="/demo">Demo Gratis</a><a href="/journal">Login Akun</a><a href="/delivery">Aktivasi Key</a>
+              </div>
+              <div className="footer-link-group">
+                <div className="fg-title">Dukungan</div>
+                <a href={wa(WA_MSG_DEFAULT)} target="_blank" rel="noopener noreferrer">WhatsApp</a>
+                <a href="#faq">FAQ</a>
+              </div>
+            </div>
+          </div>
+          <div className="footer-bottom">
+            <div className="footer-copy">© 2025 Journalyze. All rights reserved.</div>
+            <div className="footer-legal"><a href="#">Kebijakan Privasi</a><a href="#">Syarat & Ketentuan</a></div>
+          </div>
+        </div>
+      </footer>
+
+      {/* PURCHASE TOAST */}
+      <div className={`purchase-toast${toastVisible?' show':''}`}>
+        <div className="pt-avatar">{toastData.emoji}</div>
+        <div className="pt-text">
+          <div className="pt-name">{toastData.name}</div>
+          <div className="pt-action">baru saja <strong>{toastData.action}</strong></div>
+        </div>
+        <div className="pt-time">{toastData.time}</div>
+        <button className="pt-close" onClick={()=>setToastVisible(false)}>✕</button>
+      </div>
+
+      {/* STICKY MOBILE CTA */}
+      <div className="sticky-mobile-cta">
+        <div className="sticky-cta-inner">
+          <div className="sticky-price"><div className="sp-fake">Rp 297.000</div><div className="sp-real">Rp 149K</div></div>
+          <a href={wa(WA_MSG_PRO)} target="_blank" rel="noopener noreferrer" className="sticky-btn"><span>💬</span><span>Pesan via WhatsApp</span></a>
+        </div>
+      </div>
+    </>
+  );
+}

@@ -1,15 +1,12 @@
 // store/useAdminStore.ts
-// Pengganti variabel global di admin.html:
-// allKeys, filteredKeys, currentPage, pendingAction, activeTab,
-// _analyticsLoaded, _allUserData — sekarang jadi satu store Zustand.
-// PAGE_SIZE tetap 20, sama seperti aslinya.
+// Extended: tambah tab 'pixel' untuk PixelPanel
 import { create } from 'zustand';
 import type { LicenseKey, PendingAction, UserAnalytics } from '@/lib/types';
 
 export const PAGE_SIZE = 20;
 
 type AuthStatus = 'checking' | 'loggedOut' | 'loggedIn';
-type Tab = 'keys' | 'analytics';
+type Tab = 'keys' | 'analytics' | 'pixel';
 type Toast = { msg: string; type: 'success' | 'error' | ''; id: number } | null;
 
 interface AdminState {

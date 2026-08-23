@@ -1,4 +1,4 @@
-// components/journal/PageData.tsx — Phase 6 (full rewrite, 1:1 index.html)
+// components/journal/PageData.tsx
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -10,6 +10,7 @@ import {
   type Currency,
 } from '@/lib/riskCalc';
 import type { Trade, DW } from '@/lib/types';
+import { usePhotoAnalysis, useFotoAnalisa, type OcrResult } from '@/hooks/usePhotoAnalysis';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -54,28 +55,23 @@ const METODE_LIST = [
   { v: 'TDK DICATAT', l: 'TDK' },
 ];
 
-// ── ChipGroup ─────────────────────────────────────────────────────────────────
-
-function ChipGroup({ options, value, onSelect, multi = false, colorMap = {} }: {
-  options: { v: string; l: string }[];
-  value: string | string[];
-  onSelect: (v: string) => void;
-  multi?: boolean;
-  colorMap?: Record<string, string>;
-}) {
-  return (
-    <div className="chip-group">
-      {options.map((o) => {
-        const active = multi ? (value as string[]).includes(o.v) : value === o.v;
-        return (
-          <div key={o.v} className={`chip-opt${active ? ' sel' + (colorMap[o.v] ? ' ' + colorMap[o.v] : '') : ''}`} onClick={() => onSelect(o.v)}>
-            {o.l}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+// ── REASON_MAP ────────────────────────────────────────────────────────────────
+const REASON_MAP: Record<string, { v: string; l: string }[]> = {
+  SMC:       [{ v: 'BOS', l: 'BOS' }, { v: 'CHoCH', l: 'CHoCH' }, { v: 'FVG', l: 'FVG' }, { v: 'OB', l: 'OB' }, { v: 'Liquidity Grab', l: 'Liq.Grab' }, { v: 'MSS', l: 'MSS' }],
+  SNR:       [{ v: 'Support', l: 'Support' }, { v: 'Resisten', l: 'Resisten' }, { v: 'SBR', l: 'SBR' }, { v: 'RBS', l: 'RBS' }],
+  SND:       [{ v: 'Supply Zone', l: 'Supply' }, { v: 'Demand Zone', l: 'Demand' }, { v: 'Flip Zone', l: 'Flip Zone' }],
+  ICT:       [{ v: 'Killzone', l: 'Killzone' }, { v: 'SIBI/BISI', l: 'SIBI/BISI' }, { v: 'Liquidity', l: 'Liquidity' }, { v: 'Breaker Block', l: 'Breaker' }, { v: 'IPDA', l: 'IPDA' }],
+  ELMETHOD:  [{ v: 'Agresif Entry', l: 'Agresif' }, { v: 'Konfirmasi Entry', l: 'Konfirmasi' }, { v: 'Setup High', l: 'Setup High' }, { v: 'Setup Low', l: 'Setup Low' }],
+  ALCHEMIST: [{ v: 'Liquidity Sweep', l: 'Liq.Sweep' }, { v: 'MSS', l: 'MSS' }, { v: 'BOS', l: 'BOS' }, { v: 'OB Retest', l: 'OB Retest' }, { v: 'FVG Fill', l: 'FVG Fill' }],
+  SINYAL:    [{ v: 'Sinyal Komunitas', l: 'Komunitas' }, { v: 'Sinyal Provider', l: 'Provider' }, { v: 'Copy Trade', l: 'Copy Trade' }],
+  TRENDLINE: [{ v: 'Trend Bounce', l: 'Bounce' }, { v: 'Trend Break', l: 'Break' }, { v: 'Channel', l: 'Channel' }],
+  FIBONACCI: [],
+  DOJI:      [{ v: 'Reversal Doji', l: 'Reversal' }, { v: 'Indecision', l: 'Indecision' }, { v: 'Pin Bar', l: 'Pin Bar' }],
+  'IKUT ALUR': [{ v: 'Momentum', l: 'Momentum' }, { v: 'Breakout', l: 'Breakout' }, { v: 'Continuation', l: 'Continuation' }],
+  'BE+': [],
+  'TDK DICATAT': [],
+};
+const NO_REASON = ['TDK DICATAT', 'BE+'];
 
 // ── TradeForm type ────────────────────────────────────────────────────────────
 
@@ -107,57 +103,72 @@ function tradeToForm(t: Trade): TradeForm {
 
 // ── TradeModal ────────────────────────────────────────────────────────────────
 
-// ── REASON_MAP — 1:1 index.html ──────────────────────────────────────────────
-const REASON_MAP: Record<string, { v: string; l: string }[]> = {
-  SMC:       [{ v: 'BOS', l: 'BOS' }, { v: 'CHoCH', l: 'CHoCH' }, { v: 'FVG', l: 'FVG' }, { v: 'OB', l: 'OB' }, { v: 'Liquidity Grab', l: 'Liq.Grab' }, { v: 'MSS', l: 'MSS' }],
-  SNR:       [{ v: 'Support', l: 'Support' }, { v: 'Resisten', l: 'Resisten' }, { v: 'SBR', l: 'SBR' }, { v: 'RBS', l: 'RBS' }],
-  SND:       [{ v: 'Supply Zone', l: 'Supply' }, { v: 'Demand Zone', l: 'Demand' }, { v: 'Flip Zone', l: 'Flip Zone' }],
-  ICT:       [{ v: 'Killzone', l: 'Killzone' }, { v: 'SIBI/BISI', l: 'SIBI/BISI' }, { v: 'Liquidity', l: 'Liquidity' }, { v: 'Breaker Block', l: 'Breaker' }, { v: 'IPDA', l: 'IPDA' }],
-  ELMETHOD:  [{ v: 'Agresif Entry', l: 'Agresif' }, { v: 'Konfirmasi Entry', l: 'Konfirmasi' }, { v: 'Setup High', l: 'Setup High' }, { v: 'Setup Low', l: 'Setup Low' }],
-  ALCHEMIST: [{ v: 'Liquidity Sweep', l: 'Liq.Sweep' }, { v: 'MSS', l: 'MSS' }, { v: 'BOS', l: 'BOS' }, { v: 'OB Retest', l: 'OB Retest' }, { v: 'FVG Fill', l: 'FVG Fill' }],
-  SINYAL:    [{ v: 'Sinyal Komunitas', l: 'Komunitas' }, { v: 'Sinyal Provider', l: 'Provider' }, { v: 'Copy Trade', l: 'Copy Trade' }],
-  TRENDLINE: [{ v: 'Trend Bounce', l: 'Bounce' }, { v: 'Trend Break', l: 'Break' }, { v: 'Channel', l: 'Channel' }],
-  FIBONACCI: [],
-  DOJI:      [{ v: 'Reversal Doji', l: 'Reversal' }, { v: 'Indecision', l: 'Indecision' }, { v: 'Pin Bar', l: 'Pin Bar' }],
-  'IKUT ALUR': [{ v: 'Momentum', l: 'Momentum' }, { v: 'Breakout', l: 'Breakout' }, { v: 'Continuation', l: 'Continuation' }],
-  'BE+': [],
-  'TDK DICATAT': [],
-};
-const NO_REASON = ['TDK DICATAT', 'BE+'];
-
-// ── TradeModal — 1:1 index.html ───────────────────────────────────────────────
-function TradeModal({ form, setForm, onSave, onClose, currency }: {
-  form: TradeForm; setForm: (f: TradeForm) => void;
-  onSave: () => void; onClose: () => void; currency: Currency;
+function TradeModal({ form, setForm, onSave, onClose, currency, onOpenApiKey }: {
+  form: TradeForm;
+  setForm: (f: TradeForm) => void;
+  onSave: () => void;
+  onClose: () => void;
+  currency: Currency;
+  onOpenApiKey: () => void;   // ← dipanggil saat API key belum diset
 }) {
-  const kurs = liveRates.USD_IDR || 16462;
+  const kurs   = liveRates.USD_IDR || 16462;
   const isEdit = !!form.id;
-  const set = (k: keyof TradeForm, v: string | string[]) => setForm({ ...form, [k]: v });
+  const set    = (k: keyof TradeForm, v: string | string[]) => setForm({ ...form, [k]: v });
 
-  // ── Upload foto (OCR top) ──
-  const [uploadPreviews, setUploadPreviews] = useState<string[]>([]);
-  const [aiStatus, setAiStatus] = useState<string | null>(null);
-  const ocrInputRef = useRef<HTMLInputElement>(null);
-
-  // ── Foto Analisa ──
-  const [fotoOpen, setFotoOpen] = useState(false);
-  const [fotoAnalisa, setFotoAnalisa] = useState<string[]>(form.fotoAnalisa || []);
-
-  // ── Sync fotoAnalisa ke form setiap kali berubah ──
-  // setForm adalah plain useState setter, tidak support functional update
+  // ── ref untuk form terbaru (agar closure di useEffect tidak stale) ─────────
   const formRef = useRef(form);
   formRef.current = form;
+
+  // ── OCR: hook usePhotoAnalysis ────────────────────────────────────────────
+  const {
+    uploadPreviews,
+    aiStatus,
+    aiDotState,
+    handleOcrFiles,
+    removeOcrPreview,
+  } = usePhotoAnalysis();
+
+  const ocrInputRef = useRef<HTMLInputElement>(null);
+
+  // Saat AI selesai analisa → isi form fields (1:1 logika fill di index.html line ~5440)
+  const applyOcrResult = useCallback((parsed: OcrResult) => {
+    const cur = formRef.current;
+    const next = { ...cur };
+    if (parsed.pair)    next.pair    = parsed.pair;
+    if (parsed.posisi)  next.posisi  = parsed.posisi;
+    if (parsed.result)  next.result  = parsed.result;
+    if (parsed.lot   != null) next.lot   = String(parsed.lot);
+    if (parsed.entry != null) next.entry = String(parsed.entry);
+    if (parsed.close != null) next.close = String(parsed.close);
+    if (parsed.sl    != null && parsed.sl)  next.sl = String(parsed.sl);
+    if (parsed.tp    != null && parsed.tp)  next.tp = String(parsed.tp);
+    if (parsed.tanggal) next.tanggal = parsed.tanggal;
+    setForm(next);
+  }, [setForm]);
+
+  // ── Foto Analisa: hook useFotoAnalisa ─────────────────────────────────────
+  const {
+    fotoAnalisa,
+    setFotoAnalisa,
+    fotoOpen,
+    toggleFotoAnalisa,
+    handleFotoAnalisaFiles,
+    rmFotoAnalisa,
+    openFotoFull,
+  } = useFotoAnalisa(form.fotoAnalisa || []);
+
+  // Sync fotoAnalisa → form setiap kali berubah
   useEffect(() => {
     setForm({ ...formRef.current, fotoAnalisa });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fotoAnalisa]);
 
-  // ── Reason block ──
+  // ── Reason block ──────────────────────────────────────────────────────────
   const selectedMetode = form.metode;
-  const showReason = selectedMetode.length > 0 && !selectedMetode.every(m => NO_REASON.includes(m));
-  const hasFib = selectedMetode.includes('FIBONACCI');
-  const hasAlchemist = selectedMetode.includes('ALCHEMIST');
-  const reasonChips = (() => {
+  const showReason     = selectedMetode.length > 0 && !selectedMetode.every(m => NO_REASON.includes(m));
+  const hasFib         = selectedMetode.includes('FIBONACCI');
+  const hasAlchemist   = selectedMetode.includes('ALCHEMIST');
+  const reasonChips    = (() => {
     const chips: { v: string; l: string }[] = [];
     selectedMetode.forEach(m => {
       if (NO_REASON.includes(m) || m === 'FIBONACCI') return;
@@ -172,44 +183,40 @@ function TradeModal({ form, setForm, onSave, onClose, currency }: {
 
   const toggleMetode = (v: string) => {
     const arr = form.metode.includes(v) ? form.metode.filter(m => m !== v) : [...form.metode, v];
-    // Hanya hapus reason yang sudah tidak relevan — reason dari metode yang masih aktif tetap dipertahankan
-    const validReasonVals = new Set(
-      arr.flatMap(m => (REASON_MAP[m] || []).map(r => r.v))
-    );
-    const curReasons = (form.reason || '').split(',').map(s => s.trim()).filter(Boolean);
+    const validReasonVals = new Set(arr.flatMap(m => (REASON_MAP[m] || []).map(r => r.v)));
+    const curReasons      = (form.reason || '').split(',').map(s => s.trim()).filter(Boolean);
     const filteredReasons = curReasons.filter(r => validReasonVals.has(r));
-    const hasFibNext = arr.includes('FIBONACCI');
-    const hasAlchNext = arr.includes('ALCHEMIST');
     setForm({
       ...form,
-      metode: arr,
-      reason: filteredReasons.join(', '),
-      reasonFib: hasFibNext ? form.reasonFib : '',
-      reasonCustom: hasAlchNext ? form.reasonCustom : '',
+      metode:       arr,
+      reason:       filteredReasons.join(', '),
+      reasonFib:    arr.includes('FIBONACCI')  ? form.reasonFib    : '',
+      reasonCustom: arr.includes('ALCHEMIST')  ? form.reasonCustom : '',
     });
   };
+
   const toggleReason = (v: string) => {
-    const cur = (form.reason || '').split(',').map(s => s.trim()).filter(Boolean);
+    const cur  = (form.reason || '').split(',').map(s => s.trim()).filter(Boolean);
     const next = cur.includes(v) ? cur.filter(r => r !== v) : [...cur, v];
     set('reason', next.join(', '));
   };
   const selectedReasons = (form.reason || '').split(',').map(s => s.trim()).filter(Boolean);
 
-  // ── Pip value ──
+  // ── Pip value display ─────────────────────────────────────────────────────
   const getPipValueDisplay = (pair: string, cur: Currency): string => {
     if (!pair) return '—';
     const pipUSD: Record<string, number> = { XAUUSD: 0.10, USDJPY: 0.0091, BTCUSD: 1.00, GBPUSD: 0.10, NASDAQ: 0.10 };
     const pv = pipUSD[pair] ?? 0.10;
     if (cur === 'CENT') return (pv * 100).toFixed(2) + '¢ per 0.01 lot';
-    if (cur === 'USD') return '$' + pv.toFixed(2) + ' per 0.01 lot';
+    if (cur === 'USD')  return '$' + pv.toFixed(2) + ' per 0.01 lot';
     return 'Rp ' + Math.round(pv * kurs).toLocaleString('id-ID') + ' per 0.01 lot';
   };
 
-  // ── Live preview calc ──
+  // ── Live preview calc ─────────────────────────────────────────────────────
   const entry = parseNum(form.entry), close = parseNum(form.close);
-  const sl = parseNum(form.sl), tp = parseNum(form.tp), lot = parseNum(form.lot);
-  const pips = entry && close && form.pair && form.result ? calcPips(entry, close, form.pair, form.result) : null;
-  const pl = pips != null && lot && form.pair ? calcPL(pips, lot, form.pair, currency) : null;
+  const sl    = parseNum(form.sl),    tp    = parseNum(form.tp), lot = parseNum(form.lot);
+  const pips  = entry && close && form.pair && form.result ? calcPips(entry, close, form.pair, form.result) : null;
+  const pl    = pips != null && lot && form.pair ? calcPL(pips, lot, form.pair, currency) : null;
 
   let rrVal: number | null = null;
   let rrSrc = '';
@@ -217,46 +224,21 @@ function TradeModal({ form, setForm, onSave, onClose, currency }: {
     const hasSL = sl !== null && sl !== 0, hasTP = tp !== null && tp !== 0;
     if (hasSL && hasTP) {
       const riskPips = Math.abs(entry - sl!), rewardTP = Math.abs(tp! - entry);
-      const tpTol = Math.abs(tp! - entry) * 0.001;
+      const tpTol    = Math.abs(tp! - entry) * 0.001;
       const closeMatchesTP = Math.abs(close - tp!) <= tpTol;
       if (riskPips > 0) {
         if (closeMatchesTP) { rrVal = rewardTP / riskPips; rrSrc = 'SL & TP'; }
-        else { rrVal = Math.abs(close - entry) / riskPips; rrSrc = 'Close & SL'; }
+        else                { rrVal = Math.abs(close - entry) / riskPips; rrSrc = 'Close & SL'; }
       }
     } else { rrVal = form.result === 'Profit' ? 2.0 : 0.5; rrSrc = 'Default'; }
   }
   const rrColor = rrVal != null ? (rrVal >= 1 ? 'var(--green)' : rrVal >= 0.5 ? 'var(--gold2)' : 'var(--red)') : 'inherit';
 
-  // ── Foto handler ──
-  const handleUploadFoto = (files: FileList | null) => {
-    if (!files) return;
-    Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = e => {
-        const b64 = e.target?.result as string;
-        setFotoAnalisa(prev => {
-          const next = [...prev, b64];
-          setForm({ ...form, fotoAnalisa: next });
-          return next;
-        });
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  // ── OCR upload handler (top photo) ──
-  const handleOcrUpload = (files: FileList | null) => {
-    if (!files) return;
-    const previews: string[] = [];
-    Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = e => {
-        previews.push(e.target?.result as string);
-        if (previews.length === files.length) setUploadPreviews(prev => [...prev, ...previews]);
-      };
-      reader.readAsDataURL(file);
-    });
-  };
+  // ── dot color sesuai state (1:1 index.html) ───────────────────────────────
+  const dotColor = aiDotState === 'success' ? 'var(--green)'
+                 : aiDotState === 'error'   ? 'var(--red)'
+                 : 'var(--gold)';
+  const dotAnim  = aiDotState === 'loading' ? 'pulse 1s infinite' : 'none';
 
   return (
     <div className="overlay open" id="trade-modal" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
@@ -267,30 +249,52 @@ function TradeModal({ form, setForm, onSave, onClose, currency }: {
         </div>
         <div className="modal-body">
 
-          {/* ── UPLOAD FOTO OCR (top) ── */}
+          {/* ── UPLOAD FOTO OCR (top) — 1:1 index.html ── */}
           <div className="fg" style={{ marginBottom: '12px' }}>
             <label className="flabel">📷 Upload Screenshot Trade (bisa buat ngisi otomatis)</label>
-            <div className="upload-zone" id="upload-zone" onClick={() => ocrInputRef.current?.click()}>
+            <div
+              className="upload-zone"
+              id="upload-zone"
+              onClick={() => ocrInputRef.current?.click()}
+            >
               <div className="upload-zone-icon">🖼️</div>
               <div className="upload-zone-text">
                 Klik untuk upload foto dari MT4/MT5<br />
                 <strong>Sistem akan otomatis baca data trade dari foto</strong>
               </div>
             </div>
-            <input ref={ocrInputRef} type="file" accept="image/*" multiple style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }} onChange={e => handleOcrUpload(e.target.files)} />
+
+            {/* Input hidden — reset value setelah dipakai agar onChange terpanggil ulang */}
+            <input
+              ref={ocrInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              style={{ display: 'none' }}
+              onChange={e => {
+                handleOcrFiles(e.target.files, applyOcrResult, onOpenApiKey);
+                if (ocrInputRef.current) ocrInputRef.current.value = '';
+              }}
+            />
+
+            {/* AI status (1:1 index.html: .ai-status .ai-dot) */}
             {aiStatus && (
-              <div className="ai-status">
-                <div className="ai-dot" />
-                <span>{aiStatus}</span>
+              <div className="ai-status" id="ai-status" style={{ display: 'flex' }}>
+                <div
+                  className="ai-dot"
+                  style={{ background: dotColor, animation: dotAnim }}
+                />
+                <span id="ai-status-txt">{aiStatus}</span>
               </div>
             )}
+
+            {/* Preview thumbnails (1:1 .photo-list .photo-item) */}
             {uploadPreviews.length > 0 && (
-              <div className="photo-list">
+              <div className="photo-list" id="photo-preview">
                 {uploadPreviews.map((src, i) => (
-                  <div key={i} style={{ position: 'relative', display: 'inline-block' }}>
-                    <img src={src} style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--gold-bd)' }} alt="" />
-                    <button onClick={() => setUploadPreviews(prev => prev.filter((_, j) => j !== i))}
-                      style={{ position: 'absolute', top: '-4px', right: '-4px', background: 'var(--red)', border: 'none', borderRadius: '50%', width: '16px', height: '16px', fontSize: '9px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                  <div key={i} className="photo-item">
+                    <img src={src} alt="" />
+                    <button className="rm" onClick={() => removeOcrPreview(i)}>✕</button>
                   </div>
                 ))}
               </div>
@@ -301,7 +305,10 @@ function TradeModal({ form, setForm, onSave, onClose, currency }: {
 
           {/* ── FORM FIELDS ── */}
           <div className="frow">
-            <div className="fg"><label className="flabel">📅 Tanggal</label><input type="date" className="finput" id="f-tgl" value={form.tanggal} onChange={e => set('tanggal', e.target.value)} /></div>
+            <div className="fg">
+              <label className="flabel">📅 Tanggal</label>
+              <input type="date" className="finput" id="f-tgl" value={form.tanggal} onChange={e => set('tanggal', e.target.value)} />
+            </div>
             <div className="fg">
               <label className="flabel">🌏 Sesi Market</label>
               <div className="chip-group" id="cg-sesi">
@@ -324,7 +331,7 @@ function TradeModal({ form, setForm, onSave, onClose, currency }: {
             <div className="fg">
               <label className="flabel">📍 Posisi</label>
               <div className="chip-group" id="cg-pos">
-                <div className={`chip-opt${form.posisi === 'Buy' ? ' sel-buy' : ''}`} onClick={() => set('posisi', 'Buy')}>Buy</div>
+                <div className={`chip-opt${form.posisi === 'Buy'  ? ' sel-buy'  : ''}`} onClick={() => set('posisi', 'Buy')}>Buy</div>
                 <div className={`chip-opt${form.posisi === 'Sell' ? ' sel-sell' : ''}`} onClick={() => set('posisi', 'Sell')}>Sell</div>
               </div>
             </div>
@@ -346,7 +353,7 @@ function TradeModal({ form, setForm, onSave, onClose, currency }: {
               <label className="flabel">📊 Result</label>
               <div className="chip-group" id="cg-res">
                 <div className={`chip-opt${form.result === 'Profit' ? ' sel-profit' : ''}`} onClick={() => set('result', 'Profit')}>Profit</div>
-                <div className={`chip-opt${form.result === 'Lose' ? ' sel-lose' : ''}`} onClick={() => set('result', 'Lose')}>Lose</div>
+                <div className={`chip-opt${form.result === 'Lose'   ? ' sel-lose'   : ''}`} onClick={() => set('result', 'Lose')}>Lose</div>
               </div>
             </div>
           </div>
@@ -362,8 +369,6 @@ function TradeModal({ form, setForm, onSave, onClose, currency }: {
                 ))}
               </div>
             </div>
-
-            {/* REASON BLOCK — muncul dinamis sesuai metode */}
             {showReason && (
               <div className="reason-block visible" id="reason-block">
                 <div className="reason-block-label" id="reason-block-label">{reasonLabel}</div>
@@ -394,25 +399,24 @@ function TradeModal({ form, setForm, onSave, onClose, currency }: {
               <div className="fg">
                 <label className="flabel">⚠️ Risk Level</label>
                 <div className="chip-group" id="cg-risklevel">
-                  <div className={`chip-opt${form.riskLevel === 'HIGH RISK' ? ' sel-hr' : ''}`} onClick={() => set('riskLevel', 'HIGH RISK')}>High Risk</div>
+                  <div className={`chip-opt${form.riskLevel === 'HIGH RISK'   ? ' sel-hr' : ''}`} onClick={() => set('riskLevel', 'HIGH RISK')}>High Risk</div>
                   <div className={`chip-opt${form.riskLevel === 'MIDDLE RISK' ? ' sel-mr' : ''}`} onClick={() => set('riskLevel', 'MIDDLE RISK')}>Middle Risk</div>
-                  <div className={`chip-opt${form.riskLevel === 'LOW RISK' ? ' sel-lr' : ''}`} onClick={() => set('riskLevel', 'LOW RISK')}>Low Risk</div>
+                  <div className={`chip-opt${form.riskLevel === 'LOW RISK'    ? ' sel-lr' : ''}`} onClick={() => set('riskLevel', 'LOW RISK')}>Low Risk</div>
                 </div>
               </div>
               <div className="fg">
                 <label className="flabel">🧘 Kontrol Emosi</label>
                 <div className="chip-group" id="cg-emosi">
-                  <div className={`chip-opt${form.emosiKontrol === 'Emosi' ? ' sel-emosi' : ''}`} onClick={() => set('emosiKontrol', 'Emosi')}>Emosi</div>
+                  <div className={`chip-opt${form.emosiKontrol === 'Emosi'  ? ' sel-emosi'  : ''}`} onClick={() => set('emosiKontrol', 'Emosi')}>Emosi</div>
                   <div className={`chip-opt${form.emosiKontrol === 'Stabil' ? ' sel-stabil' : ''}`} onClick={() => set('emosiKontrol', 'Stabil')}>Stabil</div>
-                  <div className={`chip-opt${form.emosiKontrol === 'Aman' ? ' sel-aman' : ''}`} onClick={() => set('emosiKontrol', 'Aman')}>Aman</div>
+                  <div className={`chip-opt${form.emosiKontrol === 'Aman'   ? ' sel-aman'   : ''}`} onClick={() => set('emosiKontrol', 'Aman')}>Aman</div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* ── FOTO ANALISA (collapsible) ── */}
-          {/* Input SELALU ada di DOM — tidak di dalam conditional fotoOpen */}
-          {/* Pakai <label htmlFor> bukan ref.click() — paling reliable di semua browser */}
+          {/* ── FOTO ANALISA (collapsible) — 1:1 index.html ── */}
+          {/* Input SELALU ada di DOM (tidak di dalam conditional) */}
           <input
             id="foto-analisa-input"
             type="file"
@@ -420,43 +424,37 @@ function TradeModal({ form, setForm, onSave, onClose, currency }: {
             multiple
             style={{ display: 'none' }}
             onChange={e => {
-              const files = Array.from(e.target.files || []);
-              if (!files.length) return;
-              e.target.value = '';
-              files.forEach(file => {
-                const reader = new FileReader();
-                reader.onload = ev => {
-                  const b64 = ev.target?.result as string;
-                  setFotoAnalisa(prev => {
-                    const next = [...prev, b64];
-                    // functional update tidak bisa dipakai karena setForm bukan useState setter biasa
-                    // update dilakukan via useEffect di bawah
-                    return next;
-                  });
-                };
-                reader.readAsDataURL(file);
-              });
+              // Supabase client dari window (diinject JournalApp setelah init)
+              const sb  = (typeof window !== 'undefined' ? (window as any)._sb  : null) ?? null;
+              const uid = (typeof window !== 'undefined' ? (window as any)._currentUser?.id : null) ?? null;
+              handleFotoAnalisaFiles(e.target.files, sb, uid);
+              if (e.target) e.target.value = '';
             }}
           />
           <div className="modal-section" style={{ marginTop: '2px' }}>
             <div className="foto-analisa-wrap">
-              <div className="foto-analisa-header" onClick={() => setFotoOpen(p => !p)}>
+              <div className="foto-analisa-header" onClick={toggleFotoAnalisa}>
                 <div className="foto-analisa-header-left">
                   <div className="foto-analisa-icon">📸</div>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
                       <span className="foto-analisa-title">Foto Analisa</span>
-                      {fotoAnalisa.length > 0 && <span className="foto-analisa-badge">{fotoAnalisa.length}</span>}
+                      {fotoAnalisa.length > 0 && (
+                        <span className="foto-analisa-badge" id="foto-count-badge">{fotoAnalisa.length}</span>
+                      )}
                     </div>
-                    <div style={{ fontSize: '9.5px', color: 'var(--text3)', marginTop: '1px' }}>Screenshot chart, setup, atau bukti entry</div>
+                    <div style={{ fontSize: '9.5px', color: 'var(--text3)', marginTop: '1px' }}>
+                      Screenshot chart, setup, atau bukti entry
+                    </div>
                   </div>
                 </div>
-                <span className="foto-analisa-toggle">{fotoOpen ? '▲' : '▼'}</span>
+                <span className={`foto-analisa-toggle${fotoOpen ? ' open' : ''}`} id="foto-analisa-toggle">▼</span>
               </div>
+
               {fotoOpen && (
-                <div className="foto-analisa-body">
-                  {/* label htmlFor — native browser, tidak perlu JS click */}
-                  <label htmlFor="foto-analisa-input" className="foto-drop-zone" style={{ display: 'block', cursor: 'pointer' }}>
+                <div className="foto-analisa-body open" id="foto-analisa-body">
+                  {/* label htmlFor → native file picker, tidak perlu JS click */}
+                  <label htmlFor="foto-analisa-input" className="foto-drop-zone" id="foto-drop-zone" style={{ display: 'block', cursor: 'pointer' }}>
                     <span className="fdz-icon">🗂️</span>
                     <div className="fdz-title">Upload Foto Analisa</div>
                     <div className="fdz-sub">
@@ -464,26 +462,27 @@ function TradeModal({ form, setForm, onSave, onClose, currency }: {
                       <strong>JPG / PNG / WEBP</strong> — bisa upload lebih dari 1
                     </div>
                   </label>
+
                   {fotoAnalisa.length === 0 ? (
-                    <div className="foto-empty-hint">Belum ada foto ditambahkan</div>
+                    <div className="foto-empty-hint" id="foto-empty-hint">Belum ada foto ditambahkan</div>
                   ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '6px', marginTop: '10px' }}>
+                    <div className="foto-grid" id="foto-analisa-grid">
                       {fotoAnalisa.map((src, i) => (
-                        <div key={i} style={{ position: 'relative' }}>
-                          <img
-                            src={src}
-                            style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--gold-bd)' }}
-                            alt=""
-                          />
+                        <div
+                          key={i}
+                          className="foto-thumb"
+                          onClick={() => openFotoFull(src)}
+                        >
+                          <img src={src} alt={`Foto ${i + 1}`} />
                           <button
-                            type="button"
+                            className="foto-thumb-rm"
                             onClick={e => {
                               e.stopPropagation();
-                              const next = fotoAnalisa.filter((_, j) => j !== i);
-                              setFotoAnalisa(next);
+                              const sb = (typeof window !== 'undefined' ? (window as any)._sb : null) ?? null;
+                              rmFotoAnalisa(i, sb);
                             }}
-                            style={{ position: 'absolute', top: '3px', right: '3px', background: 'rgba(0,0,0,0.75)', border: 'none', borderRadius: '50%', width: '18px', height: '18px', fontSize: '9px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >✕</button>
+                          <span className="foto-thumb-num">📷 {i + 1}</span>
                         </div>
                       ))}
                     </div>
@@ -492,13 +491,20 @@ function TradeModal({ form, setForm, onSave, onClose, currency }: {
               )}
             </div>
           </div>
+
           {/* ── CATATAN ── */}
           <div className="fg" style={{ marginTop: '10px' }}>
             <label className="flabel">📝 Catatan</label>
-            <textarea className="ftextarea" id="f-catatan" placeholder="Analisis, alasan entry, kondisi market..." value={form.catatan} onChange={e => set('catatan', e.target.value)} />
+            <textarea
+              className="ftextarea"
+              id="f-catatan"
+              placeholder="Analisis, alasan entry, kondisi market..."
+              value={form.catatan}
+              onChange={e => set('catatan', e.target.value)}
+            />
           </div>
 
-          {/* ── LIVE PREVIEW — 1:1 index.html ── */}
+          {/* ── LIVE PREVIEW ── */}
           <div className="calc-preview">
             <div className="calc-row">
               <span className="calc-lbl">Jumlah Pips</span>
@@ -510,12 +516,16 @@ function TradeModal({ form, setForm, onSave, onClose, currency }: {
             </div>
             <div className="calc-row">
               <span className="calc-lbl">🔒 Kurs dikunci</span>
-              <span className="calc-val" id="prev-kurs" style={{ fontSize: '10px', color: 'var(--gold)' }}>Rp {Math.round(kurs).toLocaleString('id-ID')}</span>
+              <span className="calc-val" id="prev-kurs" style={{ fontSize: '10px', color: 'var(--gold)' }}>
+                Rp {Math.round(kurs).toLocaleString('id-ID')}
+              </span>
             </div>
             <div className="calc-row">
               <span className="calc-lbl" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 ⚖️ Risk/Reward (RR)
-                <span id="prev-rr-src" style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '7.5px', color: 'var(--text4)', background: 'var(--bg4)', border: '1px solid var(--border)', padding: '1px 5px', borderRadius: '3px' }}>{rrSrc || '—'}</span>
+                <span id="prev-rr-src" style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '7.5px', color: 'var(--text4)', background: 'var(--bg4)', border: '1px solid var(--border)', padding: '1px 5px', borderRadius: '3px' }}>
+                  {rrSrc || '—'}
+                </span>
               </span>
               <span className="calc-val" id="prev-rr" style={{ fontSize: '12px', color: rrColor }}>
                 {rrVal != null ? '1 : ' + rrVal.toFixed(2) : '—'}
@@ -539,17 +549,28 @@ function TradeModal({ form, setForm, onSave, onClose, currency }: {
   );
 }
 
-function DWModal({ currency, onSave, onClose }: { currency: Currency; onSave: (tgl: string, dep: number, wd: number) => void; onClose: () => void; }) {
+// ── DWModal ───────────────────────────────────────────────────────────────────
+
+function DWModal({ currency, onSave, onClose }: {
+  currency: Currency;
+  onSave: (tgl: string, dep: number, wd: number) => void;
+  onClose: () => void;
+}) {
   const [tgl, setTgl] = useState(todayStr());
   const [dep, setDep] = useState('');
-  const [wd, setWd] = useState('');
+  const [wd,  setWd]  = useState('');
   const curLabel = currency === 'CENT' ? '¢' : currency === 'USD' ? '$' : 'Rp';
   return (
     <div className="overlay open" id="dw-modal" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal" style={{ maxWidth: '400px' }}>
-        <div className="modal-head"><div className="modal-title">Deposit / Withdraw</div><button className="modal-close" onClick={onClose}>✕</button></div>
+        <div className="modal-head">
+          <div className="modal-title">Deposit / Withdraw</div>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
         <div className="modal-body">
-          <div className="frow f1" style={{ marginBottom: '10px' }}><div className="fg"><label className="flabel">📅 Tanggal</label><input type="date" className="finput" value={tgl} onChange={e => setTgl(e.target.value)} /></div></div>
+          <div className="frow f1" style={{ marginBottom: '10px' }}>
+            <div className="fg"><label className="flabel">📅 Tanggal</label><input type="date" className="finput" value={tgl} onChange={e => setTgl(e.target.value)} /></div>
+          </div>
           <div className="frow">
             <div className="fg"><label className="flabel">Deposit ({curLabel})</label><input type="number" className="finput" value={dep} placeholder="0" step="any" min="0" onChange={e => setDep(e.target.value)} /></div>
             <div className="fg"><label className="flabel">Withdraw ({curLabel})</label><input type="number" className="finput" value={wd} placeholder="0" step="any" min="0" onChange={e => setWd(e.target.value)} /></div>
@@ -558,7 +579,10 @@ function DWModal({ currency, onSave, onClose }: { currency: Currency; onSave: (t
         </div>
         <div className="modal-foot">
           <button className="btn btn-ghost" onClick={onClose}>Batal</button>
-          <button className="btn btn-gold" onClick={() => { if (!tgl) return; onSave(tgl, inputToIDR(parseFloat(dep) || 0, currency), inputToIDR(parseFloat(wd) || 0, currency)); }}>Simpan</button>
+          <button className="btn btn-gold" onClick={() => {
+            if (!tgl) return;
+            onSave(tgl, inputToIDR(parseFloat(dep) || 0, currency), inputToIDR(parseFloat(wd) || 0, currency));
+          }}>Simpan</button>
         </div>
       </div>
     </div>
@@ -568,24 +592,24 @@ function DWModal({ currency, onSave, onClose }: { currency: Currency; onSave: (t
 // ── PageData ──────────────────────────────────────────────────────────────────
 
 export default function PageData({ active }: { active: boolean }) {
-  const currentUser = useJournalStore(s => s.currentUser);
-  const showToast = useJournalStore(s => s.showToast);
+  const currentUser      = useJournalStore(s => s.currentUser);
+  const showToast        = useJournalStore(s => s.showToast);
   const showConfirmModal = useJournalStore(s => s.showConfirmModal);
-  const { trades, dwList, loaded, loadLocal, loadCloud, addTrade, updateTrade, deleteTrade, resetTrades, addDW, deleteDW } = useTradeStore();
+  
+  const { trades, dwList, loadLocal, loadCloud, addTrade, updateTrade, deleteTrade, resetTrades, addDW, deleteDW } = useTradeStore();
 
-  const [mounted, setMounted] = useState(false);
-  const [rs, setRs] = useState(getRiskState());
-  const [currency, setCurrencyState] = useState<Currency>('IDR');
-  const [tradeModal, setTradeModal] = useState(false);
-  const [dwModal, setDwModal] = useState(false);
-  const [form, setForm] = useState<TradeForm>(emptyForm());
-  const [pairFilter, setPairFilter] = useState('');
-  const [resultFilter, setResultFilter] = useState('');
-  const [undoSnapshot, setUndoSnapshot] = useState<Trade[] | null>(null);
-  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
-  const fotoAnalisaRef = useRef<HTMLInputElement>(null);
+  const [mounted,       setMounted]       = useState(false);
+  const [rs,            setRs]            = useState(getRiskState());
+  const [currency,      setCurrencyState] = useState<Currency>('IDR');
+  const [tradeModal,    setTradeModal]    = useState(false);
+  const [dwModal,       setDwModal]       = useState(false);
+  const [form,          setForm]          = useState<TradeForm>(emptyForm());
+  const [pairFilter,    setPairFilter]    = useState('');
+  const [resultFilter,  setResultFilter]  = useState('');
+  const [undoSnapshot,  setUndoSnapshot]  = useState<Trade[] | null>(null);
+  const [lightboxSrc,   setLightboxSrc]   = useState<string | null>(null);
 
-  const kurs = liveRates.USD_IDR || 16462;
+  const kurs   = liveRates.USD_IDR || 16462;
   const userId = currentUser?.id || null;
 
   useEffect(() => {
@@ -606,53 +630,49 @@ export default function PageData({ active }: { active: boolean }) {
   }, [active, mounted]);
 
   const balanceIDR: number = rs.balance || 0;
-  const targetIDR: number = rs.target || 0;
+  const targetIDR:  number = rs.target  || 0;
 
-  // ── Computed trades ──
   const computedTrades = useMemo(() => {
     if (!mounted) return [];
     return recalcAll(trades, dwList, currency, balanceIDR, kurs);
   }, [trades, dwList, currency, balanceIDR, kurs, mounted]);
 
-  // ── Filtered trades ──
   const filteredTrades = useMemo(() => {
     return computedTrades.filter(t => {
-      if (pairFilter && t.pair !== pairFilter) return false;
-      if (resultFilter && t.result !== resultFilter) return false;
+      if (pairFilter   && t.pair   !== pairFilter)   return false;
+      if (resultFilter && t.result !== resultFilter)  return false;
       return true;
     });
   }, [computedTrades, pairFilter, resultFilter]);
 
-  // ── Stats (pakai computedTrades, bukan filteredTrades — 1:1 renderStats) ──
   const stats = useMemo(() => {
-    const all = computedTrades;
-    const wins = all.filter(t => t.result === 'Profit');
-    const losses = all.filter(t => t.result === 'Lose');
-    const totalProfit = wins.reduce((s, t) => s + (t._pl || 0), 0);
-    const totalLose = losses.reduce((s, t) => s + (t._pl || 0), 0);
-    const totalPL = totalProfit + totalLose;
-    const wr = all.length ? Math.round((wins.length / all.length) * 100) : 0;
-    const sortedAll = [...all].sort((a, b) => a.tanggal < b.tanggal ? -1 : 1);
-    const lastSaldo = sortedAll.length ? (sortedAll[sortedAll.length - 1]._saldo || 0) : 0;
-    const avgWin = wins.length ? totalProfit / wins.length : 0;
-    const avgLoss = losses.length ? Math.abs(totalLose) / losses.length : 0;
-    const profitFactor = totalLose !== 0 ? Math.abs(totalProfit / totalLose) : 0;
-    const streak = calcStreak(all);
+    const all        = computedTrades;
+    const wins       = all.filter(t => t.result === 'Profit');
+    const losses     = all.filter(t => t.result === 'Lose');
+    const totalProfit = wins.reduce((s, t)   => s + (t._pl || 0), 0);
+    const totalLose   = losses.reduce((s, t) => s + (t._pl || 0), 0);
+    const totalPL     = totalProfit + totalLose;
+    const wr          = all.length ? Math.round((wins.length / all.length) * 100) : 0;
+    const sortedAll   = [...all].sort((a, b) => a.tanggal < b.tanggal ? -1 : 1);
+    const lastSaldo   = sortedAll.length ? (sortedAll[sortedAll.length - 1]._saldo || 0) : 0;
+    const avgWin      = wins.length   ? totalProfit / wins.length              : 0;
+    const avgLoss     = losses.length ? Math.abs(totalLose) / losses.length    : 0;
+    const profitFactor = totalLose !== 0 ? Math.abs(totalProfit / totalLose)   : 0;
+    const streak      = calcStreak(all);
     const hariTrading = [...new Set(all.map(t => t.tanggal))].length;
     return { totalPL, totalProfit, totalLose, wr, total: all.length, wins: wins.length, losses: losses.length, saldo: lastSaldo, avgWin, avgLoss, profitFactor, streak, hariTrading };
   }, [computedTrades]);
 
-  // ── Progress bar (1:1 renderStats logic) ──
-  const balCur = idrToDisp(balanceIDR, currency);
-  const tgtCur = idrToDisp(targetIDR, currency);
-  const hasData = balCur > 0 && tgtCur > balCur;
-  const totalPLcur = stats.totalPL;
-  const currentCur = balCur + totalPLcur;
+  const balCur      = idrToDisp(balanceIDR, currency);
+  const tgtCur      = idrToDisp(targetIDR, currency);
+  const hasData     = balCur > 0 && tgtCur > balCur;
+  const totalPLcur  = stats.totalPL;
+  const currentCur  = balCur + totalPLcur;
   const baselineWidth = hasData ? Math.min(100, (balCur / tgtCur) * 100) : 0;
-  const plWidth = hasData ? (totalPLcur / tgtCur) * 100 : 0;
-  const totalWidth = Math.min(100, Math.max(0, baselineWidth + plWidth));
+  const plWidth     = hasData ? (totalPLcur / tgtCur) * 100 : 0;
+  const totalWidth  = Math.min(100, Math.max(0, baselineWidth + plWidth));
   const progToTarget = hasData ? Math.min(100, Math.max(0, (currentCur / tgtCur) * 100)) : 0;
-  const barColor = !hasData || stats.total === 0
+  const barColor    = !hasData || stats.total === 0
     ? 'linear-gradient(90deg,var(--gold),var(--gold3),#f0c040)'
     : totalPLcur >= 0 ? 'linear-gradient(90deg,#22c55e,#4ade80,#86efac)'
     : 'linear-gradient(90deg,var(--gold),var(--gold3),#f0c040)';
@@ -662,65 +682,62 @@ export default function PageData({ active }: { active: boolean }) {
     : `Saldo: ${fmtDispCur(currentCur, currency)} (${totalPLcur >= 0 ? '+' : ''}${((totalPLcur / balCur) * 100).toFixed(2)}% dari modal)`;
   const subLabelColor = !hasData || stats.total === 0 ? 'var(--text3)' : totalPLcur > 0 ? 'var(--green)' : totalPLcur < 0 ? 'var(--red)' : 'var(--text3)';
 
-  // ── Rekap Harian (sort desc, fmtDate) ──
   const rekapHarian = useMemo(() => {
     const deduped = [...new Map(computedTrades.map(t => [t.id, t])).values()];
-    const dates = [...new Set(deduped.map(t => t.tanggal))].sort().reverse();
+    const dates   = [...new Set(deduped.map(t => t.tanggal))].sort().reverse();
     return dates.map(d => {
       const day = deduped.filter(t => t.tanggal === d);
       return { tgl: d, pl: day.reduce((s, t) => s + (t._pl || 0), 0), count: day.length };
     });
   }, [computedTrades]);
 
-  // ── Pair options ──
   const pairOptions = useMemo(() => [...new Set(trades.map(t => t.pair).filter(Boolean))], [trades]);
 
-  const fmt = (v: number) => fmtDispCur(v, currency);
+  const fmt   = (v: number) => fmtDispCur(v, currency);
   const fmtPL = (v: number | null | undefined) => v != null ? fmtMoney(v, currency) : '—';
 
-  // ── Handlers ──
-  const openAddModal = () => { setForm(emptyForm()); setTradeModal(true); };
+  const openAddModal  = () => { setForm(emptyForm());      setTradeModal(true); };
   const openEditModal = (t: Trade) => { setForm(tradeToForm(t)); setTradeModal(true); };
 
   const handleSaveTrade = useCallback(async () => {
     const { tanggal, lot, entry, close, pair, posisi, result } = form;
-    if (!tanggal) { showToast('Tanggal harus diisi', 'error'); return; }
-    if (!parseNum(lot) || (parseNum(lot) || 0) <= 0) { showToast('Lot harus diisi', 'error'); return; }
-    if (parseNum(entry) === null) { showToast('Entry price harus diisi', 'error'); return; }
-    if (parseNum(close) === null) { showToast('Close price harus diisi', 'error'); return; }
-    if (!pair) { showToast('Pilih pair', 'error'); return; }
-    if (!posisi) { showToast('Pilih posisi', 'error'); return; }
-    if (!result) { showToast('Pilih result', 'error'); return; }
+    if (!tanggal)                              { showToast('Tanggal harus diisi',   'error'); return; }
+    if (!parseNum(lot) || (parseNum(lot)||0) <= 0) { showToast('Lot harus diisi',  'error'); return; }
+    if (parseNum(entry) === null)              { showToast('Entry price harus diisi','error'); return; }
+    if (parseNum(close) === null)              { showToast('Close price harus diisi','error'); return; }
+    if (!pair)                                 { showToast('Pilih pair',            'error'); return; }
+    if (!posisi)                               { showToast('Pilih posisi',          'error'); return; }
+    if (!result)                               { showToast('Pilih result',          'error'); return; }
 
     const entryN = parseNum(entry)!, closeN = parseNum(close)!;
-    const slN = parseNum(form.sl), tpN = parseNum(form.tp), lotN = parseNum(lot)!;
-    const pips = calcPips(entryN, closeN, pair, result);
+    const slN    = parseNum(form.sl), tpN = parseNum(form.tp), lotN = parseNum(lot)!;
+    const pips   = calcPips(entryN, closeN, pair, result);
     const kursSnap = liveRates.USD_IDR || 16462;
 
     let rrValue: number | null = null;
     if (slN && tpN) {
-      const riskP = Math.abs(entryN - slN), rewardP = Math.abs(tpN - entryN);
+      const riskP  = Math.abs(entryN - slN), rewardP = Math.abs(tpN - entryN);
       const closeMatchesTP = Math.abs(closeN - tpN) <= Math.abs(tpN - entryN) * 0.001;
       if (riskP > 0) rrValue = closeMatchesTP ? rewardP / riskP : Math.abs(closeN - entryN) / riskP;
     } else { rrValue = result === 'Profit' ? 2.0 : 0.5; }
 
-    const isEdit = !!form.id;
+    const isEdit   = !!form.id;
     const existing = isEdit ? trades.find(t => t.id === form.id) : null;
     const seqValue = existing ? (existing.seq ?? parseInt(existing.id) ?? Date.now()) : Date.now();
 
     const trade: Trade = {
-      id: form.id || crypto.randomUUID(),
-      seq: seqValue, tanggal, sesi: form.sesi, pair, posisi, lot: lotN,
-      entry: entryN, sl: slN, tp: tpN, close: closeN, result, pips,
-      kurs: kursSnap, rr: rrValue,
-      metode: form.metode.join(', '), strategi: form.metode.join(', '),
-      reason: form.reason, reasonFib: form.reasonFib, reasonCustom: form.reasonCustom,
-      catatan: form.catatan, riskLevel: form.riskLevel, emosiKontrol: form.emosiKontrol,
-      source: 'manual', photos: existing?.photos || [], fotoAnalisa: form.fotoAnalisa || [],
+      id:           form.id || crypto.randomUUID(),
+      seq:          seqValue, tanggal, sesi: form.sesi, pair, posisi, lot: lotN,
+      entry:        entryN, sl: slN, tp: tpN, close: closeN, result, pips,
+      kurs:         kursSnap, rr: rrValue,
+      metode:       form.metode.join(', '), strategi: form.metode.join(', '),
+      reason:       form.reason, reasonFib: form.reasonFib, reasonCustom: form.reasonCustom,
+      catatan:      form.catatan, riskLevel: form.riskLevel, emosiKontrol: form.emosiKontrol,
+      source:       'manual', photos: existing?.photos || [], fotoAnalisa: form.fotoAnalisa || [],
     };
 
     if (isEdit) { await updateTrade(trade, userId); showToast('Trade diperbarui ✓', 'success'); }
-    else { await addTrade(trade, userId); showToast('Trade ditambahkan ✓', 'success'); }
+    else        { await addTrade(trade, userId);    showToast('Trade ditambahkan ✓', 'success'); }
     setTradeModal(false);
   }, [form, trades, userId, addTrade, updateTrade, showToast]);
 
@@ -736,7 +753,7 @@ export default function PageData({ active }: { active: boolean }) {
   };
 
   const handleSaveDW = async (tgl: string, depIDR: number, wdIDR: number) => {
-    if (!tgl) { showToast('Tanggal harus diisi', 'error'); return; }
+    if (!tgl)            { showToast('Tanggal harus diisi',        'error'); return; }
     if (!depIDR && !wdIDR) { showToast('Isi deposit atau withdraw', 'error'); return; }
     const dw: DW = { id: crypto.randomUUID(), tanggal: tgl, deposit: depIDR, withdraw: wdIDR };
     await addDW(dw, userId);
@@ -850,8 +867,8 @@ export default function PageData({ active }: { active: boolean }) {
                   <tr><td colSpan={21}><div className="ph-empty"><div className="ph-icon">📭</div>Belum ada data. Klik <strong>+ Tambah Trade</strong>.</div></td></tr>
                 ) : (
                   filteredTrades.map((t, i) => {
-                    const isP = t.result === 'Profit';
-                    const bulan = t.tanggal ? new Date(t.tanggal + 'T00:00:00').toLocaleString('id-ID', { month: 'long' }) : '—';
+                    const isP    = t.result === 'Profit';
+                    const bulan  = t.tanggal ? new Date(t.tanggal + 'T00:00:00').toLocaleString('id-ID', { month: 'long' }) : '—';
                     const runProfit = filteredTrades.slice(0, i + 1).reduce((s, x) => s + (x._pl || 0), 0);
                     const metodeStr = t.metode || t.strategi || '';
                     const rrColor = t.rr != null ? (t.rr >= 1 ? 'var(--green)' : t.rr >= 0.5 ? 'var(--gold2)' : 'var(--red)') : 'var(--text3)';
@@ -889,16 +906,8 @@ export default function PageData({ active }: { active: boolean }) {
                               <span className="chip chip-gold" style={{ fontSize: '7.5px', padding: '1px 5px', whiteSpace: 'nowrap' }}>{metodeStr}</span>
                               {t.reason && <div style={{ fontSize: '7px', color: 'var(--text3)' }}>{t.reason}</div>}
                               <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
-                                {t.riskLevel && (
-                                  <span className="chip" style={{ fontSize: '7px', padding: '1px 4px', background: rlBg, borderColor: rlBd, color: rlCl, whiteSpace: 'nowrap' }}>
-                                    {t.riskLevel}
-                                  </span>
-                                )}
-                                {t.emosiKontrol && (
-                                  <span className="chip" style={{ fontSize: '7px', padding: '1px 4px', background: emBg, borderColor: emBd, color: emCl, whiteSpace: 'nowrap' }}>
-                                    {t.emosiKontrol}
-                                  </span>
-                                )}
+                                {t.riskLevel && <span className="chip" style={{ fontSize: '7px', padding: '1px 4px', background: rlBg, borderColor: rlBd, color: rlCl, whiteSpace: 'nowrap' }}>{t.riskLevel}</span>}
+                                {t.emosiKontrol && <span className="chip" style={{ fontSize: '7px', padding: '1px 4px', background: emBg, borderColor: emBd, color: emCl, whiteSpace: 'nowrap' }}>{t.emosiKontrol}</span>}
                               </div>
                             </div>
                           ) : '—'}
@@ -939,14 +948,11 @@ export default function PageData({ active }: { active: boolean }) {
               <table className="stbl" id="dw-stbl">
                 <thead><tr><th>Tanggal</th><th>Deposit</th><th>Withdraw</th><th></th></tr></thead>
                 <tbody id="dw-tbody">
-                  {/* Auto row: saldo awal dari profil risiko */}
                   {balanceIDR > 0 && (
                     <tr style={{ background: 'var(--gold-bg)' }}>
                       <td style={{ fontSize: '10px', color: 'var(--text3)' }}>{fmtDate(todayStr())}</td>
                       <td>
-                        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '9.5px', fontWeight: 700, color: 'var(--gold2)' }}>
-                          {fmt(idrToDisp(balanceIDR, currency))}
-                        </span>
+                        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '9.5px', fontWeight: 700, color: 'var(--gold2)' }}>{fmt(idrToDisp(balanceIDR, currency))}</span>
                         <span style={{ fontSize: '8px', color: 'var(--text3)', display: 'block' }}>Modal Awal (info)</span>
                       </td>
                       <td style={{ color: 'var(--text3)', fontSize: '9px' }}>—</td>
@@ -957,19 +963,13 @@ export default function PageData({ active }: { active: boolean }) {
                     <tr><td colSpan={4} style={{ textAlign: 'center', padding: '14px', color: 'var(--text3)', fontSize: '11px' }}>Belum ada data</td></tr>
                   ) : (
                     dwList.filter(d => !d._auto).sort((a, b) => a.tanggal < b.tanggal ? -1 : 1).map(dw => {
-                      const depIDR = dw.deposit || 0;
-                      const wdIDR = dw.withdraw || 0;
-                      const depDisp = idrToDisp(depIDR, currency);
-                      const wdDisp = idrToDisp(wdIDR, currency);
+                      const depDisp = idrToDisp(dw.deposit || 0, currency);
+                      const wdDisp  = idrToDisp(dw.withdraw || 0, currency);
                       return (
                         <tr key={dw.id}>
                           <td style={{ fontSize: '10px' }}>{fmtDate(dw.tanggal)}</td>
-                          <td style={{ color: 'var(--green)', fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 700 }}>
-                            {depIDR ? '+' + fmt(depDisp) : '—'}
-                          </td>
-                          <td style={{ color: 'var(--red)', fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 700 }}>
-                            {wdIDR ? '-' + fmt(wdDisp) : '—'}
-                          </td>
+                          <td style={{ color: 'var(--green)', fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 700 }}>{dw.deposit ? '+' + fmt(depDisp) : '—'}</td>
+                          <td style={{ color: 'var(--red)',   fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 700 }}>{dw.withdraw ? '-' + fmt(wdDisp) : '—'}</td>
                           <td><button className="btn btn-danger btn-sm" style={{ fontSize: '9px', padding: '1px 5px' }} onClick={() => showConfirmModal('Hapus', 'Hapus entri ini?', 'Hapus', () => deleteDW(dw.id, userId))}>✕</button></td>
                         </tr>
                       );
@@ -1018,7 +1018,7 @@ export default function PageData({ active }: { active: boolean }) {
             </div>
           </div>
 
-          {/* KESIMPULAN PERFORMA — 1:1 renderInfoAkun */}
+          {/* KESIMPULAN PERFORMA */}
           <div className="box">
             <div className="box-head"><div className="box-title">💡 Kesimpulan Performa</div></div>
             <div className="box-body-0">
@@ -1049,16 +1049,23 @@ export default function PageData({ active }: { active: boolean }) {
 
       {/* LIGHTBOX */}
       {lightboxSrc && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}
-          onClick={() => setLightboxSrc(null)}
-        >
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}
+          onClick={() => setLightboxSrc(null)}>
           <img src={lightboxSrc} style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: '10px', border: '2px solid var(--gold-bd)', objectFit: 'contain' }} alt="preview" onClick={e => e.stopPropagation()} />
           <button style={{ position: 'absolute', top: '20px', right: '24px', background: 'none', border: 'none', color: '#fff', fontSize: '28px', cursor: 'pointer', lineHeight: 1 }} onClick={() => setLightboxSrc(null)}>✕</button>
         </div>
       )}
 
-      {tradeModal && <TradeModal form={form} setForm={setForm} onSave={handleSaveTrade} onClose={() => setTradeModal(false)} currency={currency} />}
+      {tradeModal && (
+        <TradeModal
+          form={form}
+          setForm={setForm}
+          onSave={handleSaveTrade}
+          onClose={() => setTradeModal(false)}
+          currency={currency}
+          onOpenApiKey={() => window.dispatchEvent(new CustomEvent('jz:openApiKeyModal'))}
+        />
+      )}
       {dwModal && <DWModal currency={currency} onSave={handleSaveDW} onClose={() => setDwModal(false)} />}
     </>
   );

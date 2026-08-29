@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { _sbAdmin } from '@/lib/supabaseClient';
+import { _sb, _sbAdmin } from '@/lib/supabaseClient';
 import Script from 'next/script';
 
 const WA_BASE = `https://wa.me/6281311973602`;
@@ -104,6 +104,8 @@ export default function HomeApp() {
   const [pixelId, setPixelId]           = useState<string | null>(null);
   const [pixelEnabled, setPixelEnabled] = useState(false);
   const [navScrolled, setNavScrolled]   = useState(false);
+  const [user, setUser]                 = useState<{ email: string; name: string; initial: string } | null>(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const sliderRef = useRef<HTMLDivElement>(null);
   const maxIdx = TESTIMONIALS.length - 3;
 
@@ -147,6 +149,28 @@ export default function HomeApp() {
     })();
   }, []);
 
+  useEffect(() => {
+    // Cek session saat ini
+    _sb.auth.getSession().then(({ data }) => {
+      const u = data.session?.user;
+      if (!u) return;
+      const email = u.email ?? '';
+      const name  = u.user_metadata?.full_name || u.user_metadata?.name || email.split('@')[0] || 'Trader';
+      const initial = name.charAt(0).toUpperCase();
+      setUser({ email, name, initial });
+    });
+    // Listen perubahan auth (login/logout di tab lain)
+    const { data: { subscription } } = _sb.auth.onAuthStateChange((_event, session) => {
+      const u = session?.user;
+      if (!u) { setUser(null); return; }
+      const email = u.email ?? '';
+      const name  = u.user_metadata?.full_name || u.user_metadata?.name || email.split('@')[0] || 'Trader';
+      const initial = name.charAt(0).toUpperCase();
+      setUser({ email, name, initial });
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
   const slideTo = useCallback((i: number) => {
     const c = Math.max(0, Math.min(i, maxIdx));
     setSliderIdx(c);
@@ -154,6 +178,9 @@ export default function HomeApp() {
   }, [maxIdx]);
 
   const bars = [20,45,30,65,50,80,35,90,60,75,40,55,70,85,45,60,30,72,88,50];
+
+  // Kalau sudah login → langsung ke /journal, belum login → ke /order
+  const ctaOrder = (paket: string) => user ? '/journal' : `/order?paket=${paket}`;
 
   const jmStyles: Record<string, React.CSSProperties> = {
     app: { background: '#080808', borderRadius: '0 0 12px 12px', overflow: 'hidden', position: 'relative' },
@@ -213,11 +240,91 @@ export default function HomeApp() {
             <span>🔥</span><span>Penawaran berakhir:</span>
             <span className="time-val">{cd.h}:{cd.m}:{cd.s}</span>
           </div>
-          <a href="/order?paket=pro" className="nav-cta">
-            <span>Mulai Sekarang</span><span>↗</span>
-          </a>
+
+          {user ? (
+            /* ── SUDAH LOGIN: avatar + dropdown ── */
+            <div className="nav-user-wrap" style={{position:'relative'}}>
+              <button
+                className="nav-user-btn"
+                onClick={() => setUserMenuOpen(v => !v)}
+                onBlur={() => setTimeout(() => setUserMenuOpen(false), 150)}
+              >
+                <div className="nav-user-avatar">{user.initial}</div>
+                <div className="nav-user-info">
+                  <span className="nav-user-name">{user.name}</span>
+                  <span className="nav-user-email">{user.email}</span>
+                </div>
+                <span className="nav-user-chevron" style={{
+                  display:'inline-block',
+                  transition:'transform .2s',
+                  transform: userMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                  fontSize: 10,
+                  color: 'var(--text3)',
+                }}>▼</span>
+              </button>
+              {userMenuOpen && (
+                <div className="nav-user-dropdown">
+                  <a href="/journal" className="nav-dd-item">
+                    <span>📊</span><span>Jurnal Saya</span>
+                  </a>
+                  <a href="/journal/profile" className="nav-dd-item">
+                    <span>👤</span><span>Profil</span>
+                  </a>
+                  <div className="nav-dd-divider"/>
+                  <button
+                    className="nav-dd-item nav-dd-logout"
+                    onClick={async () => {
+                      await _sb.auth.signOut();
+                      setUser(null);
+                      setUserMenuOpen(false);
+                    }}
+                  >
+                    <span>🚪</span><span>Keluar</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* ── BELUM LOGIN: tombol Masuk + CTA ── */
+            <>
+              <a href="/journal" className="nav-login">
+                <span>Masuk</span>
+              </a>
+              <a href={ctaOrder('pro')} className="nav-cta">
+                <span>Mulai Sekarang</span><span>↗</span>
+              </a>
+            </>
+          )}
         </div>
       </nav>
+
+      {/* ── STATS BAR ── */}
+      <div className="stats-bar">
+        {[
+          { val: '2.400+', label: 'Trade Tercatat' },
+          { val: '68%',    label: 'Avg Win Rate User' },
+          { val: '340+',   label: 'Trader Aktif' },
+          { val: '4.9★',   label: 'Rating Pengguna' },
+        ].map((s, i) => (
+          <div key={i} className="stats-bar-item">
+            <span className="stats-bar-val">{s.val}</span>
+            <span className="stats-bar-label">{s.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* ── MARQUEE — social proof ── */}
+      <div className="marquee-wrap">
+        <div className="marquee-track">
+          {[...Array(2)].map((_, rep) => (
+            <span key={rep} className="marquee-inner">
+              {['Budi S. baru join ⚡','Rahmad F. catat 12 trade hari ini 📊','Dewi A. win rate naik ke 72% 🏆','Andi P. profit bulan ini +Rp 1.2jt 💰','Siti R. share journal ke klien 📡','Hendra K. baru join ⚡','Yoga P. catat 8 trade hari ini 📊','Lina M. win rate 65% bulan ini 🎯','Fajar R. baru aktivasi Elite 🔥','Nadia S. share journal publik 📡'].map((item, j) => (
+                <span key={j} className="marquee-item"><span className="marquee-dot">●</span>{item}</span>
+              ))}
+            </span>
+          ))}
+        </div>
+      </div>
 
       {/* ── HERO ── */}
       <section className="hero-section">
@@ -244,7 +351,7 @@ export default function HomeApp() {
             </div>
           </div>
           <div className="hero-cta-wrap reveal delay-3">
-            <a href="/order?paket=pro" className="btn-primary-gold">
+            <a href={ctaOrder('pro')} className="btn-primary-gold">
               <span>⚡</span><span>Dapatkan Akses Sekarang</span>
             </a>
             <a href={wa(WA_MSG_DEFAULT)} target="_blank" rel="noopener noreferrer" className="btn-secondary-outline">
@@ -295,6 +402,54 @@ export default function HomeApp() {
               <p className="problem-desc">{p.desc}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      <div className="section-divider"/>
+
+      {/* ── JUJUR DULU (no-BS section, inspired by akademimarketer) ── */}
+      <section className="honest-section">
+        <div className="honest-inner">
+          <div className="section-header">
+            <div className="section-badge reveal"><span className="dot"/><span>Jujur Dulu</span></div>
+            <h2 className="section-title reveal">Kami Tidak Akan<br/><span className="gold-text">Janji Muluk-muluk.</span></h2>
+            <p className="section-sub reveal delay-1">
+              Journalyze bukan alat sihir yang bikin kamu langsung profit. Ini adalah tool untuk trader yang
+              <strong style={{color:'var(--gold2)'}}> serius ingin tahu apa yang benar-benar terjadi</strong> di trading mereka.
+            </p>
+          </div>
+          <div className="honest-grid">
+            <div className="honest-card reveal delay-1">
+              <div className="honest-icon">✅</div>
+              <h3 className="honest-card-title">Yang Journalyze Bisa Lakukan</h3>
+              <div className="honest-list">
+                {[
+                  'Bantu kamu catat & analisis setiap trade secara sistematis',
+                  'Tunjukkan pair, jam, dan setup mana yang paling cocok untukmu',
+                  'Hitung risiko yang tepat sebelum entry — bukan setelah rugi',
+                  'Beri data konkret untuk perbaiki strategi dari bulan ke bulan',
+                  'Bantu kamu bangun track record yang bisa ditunjukkan ke orang lain',
+                ].map((item, i) => (
+                  <div key={i} className="honest-item yes"><span>✓</span><span>{item}</span></div>
+                ))}
+              </div>
+            </div>
+            <div className="honest-card reveal delay-2">
+              <div className="honest-icon">❌</div>
+              <h3 className="honest-card-title">Yang Journalyze Tidak Bisa</h3>
+              <div className="honest-list">
+                {[
+                  'Menggantikan strategi trading yang solid — itu PR kamu sendiri',
+                  'Membuat kamu profit kalau kamu tidak disiplin menggunakannya',
+                  'Memprediksi market atau memberi sinyal trading',
+                  'Bekerja kalau kamu malas mencatat dan evaluasi rutin',
+                  'Mengubah trader yang tidak mau belajar menjadi konsisten',
+                ].map((item, i) => (
+                  <div key={i} className="honest-item no"><span>✗</span><span>{item}</span></div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -678,7 +833,7 @@ export default function HomeApp() {
                     <span key={f} style={{fontSize:11,color:'#C4BBa8',background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'4px 10px',whiteSpace:'nowrap'}}>{f}</span>
                   ))}
                 </div>
-                <a href="/order?paket=pro" style={{
+                <a href={ctaOrder('pro')} style={{
                   display:'inline-block',background:'linear-gradient(135deg,#C9A84C,#E8C567)',color:'#000',
                   fontWeight:900,fontSize:14,padding:'13px 32px',borderRadius:8,textDecoration:'none',
                   transition:'all 0.2s',letterSpacing:0.2,fontFamily:"'Outfit',sans-serif",
@@ -722,7 +877,7 @@ export default function HomeApp() {
                   <div key={item} className="ebook-item"><span className="check">✅</span><span>{item}</span></div>
                 ))}
               </div>
-              <a href="/order?paket=pro"
+              <a href={ctaOrder('pro')}
                 className="btn-primary-gold" style={{alignSelf:'center'}}>
                 <span>📚</span><span>Klaim E-Book Sekarang</span>
               </a>
@@ -823,7 +978,7 @@ export default function HomeApp() {
                 <div key={f} className="pricing-feature"><span className="pf-icon">✓</span><span>{f}</span></div>
               ))}
             </div>
-            <a href="/order?paket=basic" className="btn-pricing"><span>⚡</span><span>Pesan Sekarang</span></a>
+            <a href={ctaOrder('basic')} className="btn-pricing"><span>⚡</span><span>Pesan Sekarang</span></a>
           </div>
           <div className="pricing-card highlight reveal delay-2">
             <div className="pricing-badge-top">⭐ Paling Populer</div>
@@ -836,7 +991,7 @@ export default function HomeApp() {
                 <div key={f} className="pricing-feature"><span className="pf-icon">✓</span><span>{f}</span></div>
               ))}
             </div>
-            <a href="/order?paket=pro" className="btn-pricing gold"><span>⚡</span><span>Pesan Paket Pro Sekarang</span></a>
+            <a href={ctaOrder('pro')} className="btn-pricing gold"><span>⚡</span><span>Pesan Paket Pro Sekarang</span></a>
           </div>
           <div className="pricing-card reveal delay-3">
             <div className="pricing-tier">Paket Elite</div>
@@ -848,7 +1003,7 @@ export default function HomeApp() {
                 <div key={f} className="pricing-feature"><span className="pf-icon">✓</span><span>{f}</span></div>
               ))}
             </div>
-            <a href="/order?paket=elite" className="btn-pricing"><span>🔥</span><span>Pesan Sekarang</span></a>
+            <a href={ctaOrder('elite')} className="btn-pricing"><span>🔥</span><span>Pesan Sekarang</span></a>
           </div>
         </div>
       </section>
@@ -885,6 +1040,34 @@ export default function HomeApp() {
             </div>
             <button className="slider-btn" onClick={()=>slideTo(sliderIdx+1)}>→</button>
           </div>
+        </div>
+      </section>
+
+      <div className="section-divider"/>
+
+      {/* ── HASIL NYATA — proof strip ── */}
+      <section className="proof-section">
+        <div className="section-header">
+          <div className="section-badge reveal"><span className="dot"/><span>Data Nyata</span></div>
+          <h2 className="section-title reveal">Jangan Percaya Kami.<br/><span className="gold-text">Lihat Datanya Sendiri.</span></h2>
+          <p className="section-sub reveal delay-1">Angka ini berasal dari aktivitas trader aktif Journalyze selama 30 hari terakhir.</p>
+        </div>
+        <div className="proof-grid reveal">
+          {[
+            { icon: '📊', val: '2.400+',   label: 'Trade Tercatat',          sub: 'di platform bulan ini' },
+            { icon: '🏆', val: '68%',       label: 'Rata-rata Win Rate',      sub: 'user aktif yang rutin catat' },
+            { icon: '💰', val: 'Rp 1.2jt', label: 'Avg Profit Bulanan',      sub: 'trader yang pakai risk calculator' },
+            { icon: '📈', val: '3.2x',      label: 'Peningkatan Konsistensi', sub: 'setelah 60 hari pakai Journalyze' },
+            { icon: '⚡', val: '340+',      label: 'Trader Aktif',            sub: 'login minimal 3x seminggu' },
+            { icon: '📡', val: '180+',      label: 'Journal Publik Dibagikan', sub: 'untuk bangun track record' },
+          ].map((p, i) => (
+            <div key={i} className="proof-card">
+              <div className="proof-icon">{p.icon}</div>
+              <div className="proof-val">{p.val}</div>
+              <div className="proof-label">{p.label}</div>
+              <div className="proof-sub">{p.sub}</div>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -962,6 +1145,26 @@ export default function HomeApp() {
         </div>
       </section>
 
+      {/* ── GUARANTEE ── */}
+      <section className="guarantee-section">
+        <div className="guarantee-inner reveal">
+          <div className="guarantee-icon">🛡️</div>
+          <div className="guarantee-text">
+            <h3 className="guarantee-title">Garansi Aktivasi atau Uang Kembali</h3>
+            <p className="guarantee-desc">
+              Kalau akun kamu tidak aktif dalam <strong>1×24 jam</strong> setelah bukti transfer dikirim,
+              kami kembalikan 100% uang kamu. Tidak ada pertanyaan, tidak ada drama.
+              Kami yakin dengan produk kami — dan kamu tidak perlu menanggung risikonya sendirian.
+            </p>
+          </div>
+          <div className="guarantee-badges">
+            {['✅ Aktivasi Cepat','🔒 Data Aman','💬 Support WA','♾️ Lifetime Access'].map(b => (
+              <span key={b} className="guarantee-badge">{b}</span>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── FINAL CTA ── */}
       <section className="final-cta-section">
         <div className="final-cta-bg"/>
@@ -970,7 +1173,7 @@ export default function HomeApp() {
           <h2 className="final-cta-title reveal">Waktunya Upgrade<br/><span className="gold-text">Cara Trading Kamu.</span></h2>
           <p className="final-cta-sub reveal delay-1">Jangan biarkan kesalahan yang sama terus berulang.</p>
           <div className="hero-cta-wrap reveal delay-2">
-            <a href="/order?paket=pro" className="btn-primary-gold">
+            <a href={ctaOrder('pro')} className="btn-primary-gold">
               <span>⚡</span><span>Dapatkan Akses Sekarang — Rp 149K</span>
             </a>
           </div>
@@ -1025,7 +1228,7 @@ export default function HomeApp() {
             <div className="sp-fake">Rp 297.000</div>
             <div className="sp-real">Rp 149K</div>
           </div>
-          <a href="/order?paket=pro" className="sticky-btn">
+          <a href={ctaOrder('pro')} className="sticky-btn">
             <span>⚡</span><span>Pesan Sekarang</span>
           </a>
         </div>

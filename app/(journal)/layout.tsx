@@ -1,20 +1,26 @@
 // app/(journal)/layout.tsx
 import type { Metadata } from 'next';
-import './journal.css';
+import './home.css';
 
 export const metadata: Metadata = {
-  title: 'Journalyze — Trading Suite',
+  title: 'Journalyze — Jurnal Trading Profesional untuk Trader Forex',
+  description:
+    'Catat, analisis, dan tingkatkan performa trading Forex kamu dengan Journalyze. Web app jurnal trading #1 untuk trader Indonesia. Tersedia paket lifetime mulai Rp 149.000.',
+  openGraph: {
+    title: 'Journalyze — Jurnal Trading Profesional',
+    description:
+      'Web app jurnal trading Forex profesional. Analisis win rate, RR ratio, track record, dan psikologi trading dalam satu platform.',
+    url: 'https://journalyze.my.id',
+    siteName: 'Journalyze',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Journalyze — Jurnal Trading Profesional',
+    description: 'Platform jurnal trading Forex untuk trader Indonesia.',
+  },
 };
 
-export default function JournalLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link
-        href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,700&family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap"
-        rel="stylesheet"
-      />
-      {children}
-    </>
-  );
+export default function HomeLayout({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
 }

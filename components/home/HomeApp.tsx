@@ -69,7 +69,8 @@ const MOCK_TRADES = [
 ];
 
 function useCountdown() {
-  const [state, setState] = useState({ h: '23', m: '59', s: '59' });
+  // null = belum mount (SSR), supaya server & client render sama dulu → no hydration error
+  const [state, setState] = useState<{ h: string; m: string; s: string } | null>(null);
   useEffect(() => {
     const KEY = 'jz_home_cd';
     let target = parseInt(localStorage.getItem(KEY) || '0');
@@ -89,7 +90,8 @@ function useCountdown() {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
-  return state;
+  // Sebelum mount: tampilkan placeholder statis agar SSR & client cocok
+  return state ?? { h: '--', m: '--', s: '--' };
 }
 
 export default function HomeApp() {
@@ -211,7 +213,7 @@ export default function HomeApp() {
             <span>🔥</span><span>Penawaran berakhir:</span>
             <span className="time-val">{cd.h}:{cd.m}:{cd.s}</span>
           </div>
-          <a href={wa(WA_MSG_DEFAULT)} target="_blank" rel="noopener noreferrer" className="nav-cta">
+          <a href="/order?paket=pro" className="nav-cta">
             <span>Mulai Sekarang</span><span>↗</span>
           </a>
         </div>
@@ -242,8 +244,8 @@ export default function HomeApp() {
             </div>
           </div>
           <div className="hero-cta-wrap reveal delay-3">
-            <a href={wa(WA_MSG_PRO)} target="_blank" rel="noopener noreferrer" className="btn-primary-gold">
-              <span>💬</span><span>Dapatkan Akses Sekarang</span>
+            <a href="/order?paket=pro" className="btn-primary-gold">
+              <span>⚡</span><span>Dapatkan Akses Sekarang</span>
             </a>
             <a href={wa(WA_MSG_DEFAULT)} target="_blank" rel="noopener noreferrer" className="btn-secondary-outline">
               <span>Tanya-tanya dulu →</span>
@@ -676,7 +678,7 @@ export default function HomeApp() {
                     <span key={f} style={{fontSize:11,color:'#C4BBa8',background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'4px 10px',whiteSpace:'nowrap'}}>{f}</span>
                   ))}
                 </div>
-                <a href={wa(WA_MSG_PRO)} target="_blank" rel="noopener noreferrer" style={{
+                <a href="/order?paket=pro" style={{
                   display:'inline-block',background:'linear-gradient(135deg,#C9A84C,#E8C567)',color:'#000',
                   fontWeight:900,fontSize:14,padding:'13px 32px',borderRadius:8,textDecoration:'none',
                   transition:'all 0.2s',letterSpacing:0.2,fontFamily:"'Outfit',sans-serif",
@@ -720,7 +722,7 @@ export default function HomeApp() {
                   <div key={item} className="ebook-item"><span className="check">✅</span><span>{item}</span></div>
                 ))}
               </div>
-              <a href={wa(WA_MSG_PRO)} target="_blank" rel="noopener noreferrer"
+              <a href="/order?paket=pro"
                 className="btn-primary-gold" style={{alignSelf:'center'}}>
                 <span>📚</span><span>Klaim E-Book Sekarang</span>
               </a>
@@ -821,7 +823,7 @@ export default function HomeApp() {
                 <div key={f} className="pricing-feature"><span className="pf-icon">✓</span><span>{f}</span></div>
               ))}
             </div>
-            <a href={wa(WA_MSG_BASIC)} target="_blank" rel="noopener noreferrer" className="btn-pricing"><span>💬</span><span>Pesan via WhatsApp</span></a>
+            <a href="/order?paket=basic" className="btn-pricing"><span>⚡</span><span>Pesan Sekarang</span></a>
           </div>
           <div className="pricing-card highlight reveal delay-2">
             <div className="pricing-badge-top">⭐ Paling Populer</div>
@@ -834,7 +836,7 @@ export default function HomeApp() {
                 <div key={f} className="pricing-feature"><span className="pf-icon">✓</span><span>{f}</span></div>
               ))}
             </div>
-            <a href={wa(WA_MSG_PRO)} target="_blank" rel="noopener noreferrer" className="btn-pricing gold"><span>⚡</span><span>Pesan Paket Pro Sekarang</span></a>
+            <a href="/order?paket=pro" className="btn-pricing gold"><span>⚡</span><span>Pesan Paket Pro Sekarang</span></a>
           </div>
           <div className="pricing-card reveal delay-3">
             <div className="pricing-tier">Paket Elite</div>
@@ -846,7 +848,7 @@ export default function HomeApp() {
                 <div key={f} className="pricing-feature"><span className="pf-icon">✓</span><span>{f}</span></div>
               ))}
             </div>
-            <a href={wa(WA_MSG_ELITE)} target="_blank" rel="noopener noreferrer" className="btn-pricing"><span>🔥</span><span>Pesan via WhatsApp</span></a>
+            <a href="/order?paket=elite" className="btn-pricing"><span>🔥</span><span>Pesan Sekarang</span></a>
           </div>
         </div>
       </section>
@@ -923,8 +925,6 @@ export default function HomeApp() {
             <div className="section-badge reveal"><span className="dot"/><span>FAQ</span></div>
             <h2 className="section-title reveal">Pertanyaan<br/><span className="gold-text">yang Sering Ditanya</span></h2>
           </div>
-          {/* reveal hanya di .faq-list wrapper, bukan di tiap item
-              — supaya class reveal/opacity:0 tidak block jawaban saat diklik */}
           <div className="faq-list reveal">
             {FAQS.map((f,i)=>(
               <div
@@ -970,7 +970,7 @@ export default function HomeApp() {
           <h2 className="final-cta-title reveal">Waktunya Upgrade<br/><span className="gold-text">Cara Trading Kamu.</span></h2>
           <p className="final-cta-sub reveal delay-1">Jangan biarkan kesalahan yang sama terus berulang.</p>
           <div className="hero-cta-wrap reveal delay-2">
-            <a href={wa(WA_MSG_PRO)} target="_blank" rel="noopener noreferrer" className="btn-primary-gold">
+            <a href="/order?paket=pro" className="btn-primary-gold">
               <span>⚡</span><span>Dapatkan Akses Sekarang — Rp 149K</span>
             </a>
           </div>
@@ -1025,8 +1025,8 @@ export default function HomeApp() {
             <div className="sp-fake">Rp 297.000</div>
             <div className="sp-real">Rp 149K</div>
           </div>
-          <a href={wa(WA_MSG_PRO)} target="_blank" rel="noopener noreferrer" className="sticky-btn">
-            <span>💬</span><span>Pesan via WhatsApp</span>
+          <a href="/order?paket=pro" className="sticky-btn">
+            <span>⚡</span><span>Pesan Sekarang</span>
           </a>
         </div>
       </div>

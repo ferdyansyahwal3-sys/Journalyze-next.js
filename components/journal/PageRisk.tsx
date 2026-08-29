@@ -91,6 +91,56 @@ export default function PageRisk({ active }: { active: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // FIX Bug 2: Retry calcFromValues setelah liveRates siap (ticker.items populated)
+  // Problem: useEffect pertama jalan saat liveRates.USD_IDR masih 0/undefined
+  // → calcFromValues return early karena konversi IDR ngaco → result kosong
+  // Solusi: watch ticker.items, kalau result masih null & ada saved state → recalc
+  useEffect(() => {
+    if (!mounted) return;
+    if (result !== null) return; // sudah ada result, skip
+    if (ticker.items.length === 0) return; // rates belum siap
+
+    try {
+      const savedCur = (localStorage.getItem('jz_currency') as Currency) || 'IDR';
+      const saved = JSON.parse(localStorage.getItem('jz_state') || 'null');
+      if (!saved) return;
+
+      const cur: Currency = saved.currency || saved.inputCurrency || savedCur;
+      const kurs = liveRates?.USD_IDR || 16462;
+
+      let balStr = '';
+      let tgtStr = '';
+
+      if (saved.balanceRaw) {
+        balStr = saved.balanceRaw;
+      } else if (saved.balanceInput != null && !isNaN(saved.balanceInput)) {
+        balStr = cur === 'IDR' ? Math.round(saved.balanceInput).toLocaleString('id-ID') : String(saved.balanceInput);
+      } else if (saved.balance && !isNaN(saved.balance)) {
+        balStr = cur === 'CENT' ? ((saved.balance / kurs) * 100).toFixed(1) : cur === 'USD' ? (saved.balance / kurs).toFixed(2) : Math.round(saved.balance).toLocaleString('id-ID');
+      }
+
+      if (saved.targetRaw) {
+        tgtStr = saved.targetRaw;
+      } else if (saved.targetInput != null && !isNaN(saved.targetInput)) {
+        tgtStr = cur === 'IDR' ? Math.round(saved.targetInput).toLocaleString('id-ID') : String(saved.targetInput);
+      } else if (saved.target && !isNaN(saved.target)) {
+        tgtStr = cur === 'CENT' ? ((saved.target / kurs) * 100).toFixed(1) : cur === 'USD' ? (saved.target / kurs).toFixed(2) : Math.round(saved.target).toLocaleString('id-ID');
+      }
+
+      const riskStr = isNaN(parseFloat(saved.risk)) ? '' : String(parseFloat(saved.risk));
+      const monthsStr = isNaN(parseInt(saved.months)) ? '' : String(parseInt(saved.months));
+      const pairStr = saved.pair || '';
+      const levStr = saved.leverage ? String(saved.leverage) : '';
+
+      if (balStr && tgtStr && levStr) {
+        calcFromValues(balStr, tgtStr, cur, riskStr, monthsStr, pairStr, levStr);
+      }
+    } catch (e) {
+      console.warn('[PageRisk] retry restore failed:', e);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticker.items.length, mounted]);
+
   // Render ticker items sebagai string inline — sama persis dengan innerHTML asli
   // Ini fix tampilan kurs yang acak-acakan akibat React element wrap
   const tickerInner = ticker.items.length === 0

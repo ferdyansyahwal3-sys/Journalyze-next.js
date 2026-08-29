@@ -4,7 +4,7 @@
 // ════════════════════════════════════════════════════════════
 
 const CACHE_NAME = 'journalyze-v1';
-const CACHE_VERSION = '1.1.0';
+const CACHE_VERSION = '1.2.0'; // Fix: bypass SW untuk /api/ routes
 
 const STATIC_ASSETS = [
   '/',
@@ -26,6 +26,12 @@ const NO_CACHE_PATTERNS = [
   'anthropic.com',
   'api.anthropic.com',
   'api.rss2json.com',
+  'generativelanguage.googleapis.com',  // Gemini API — jangan dicache
+];
+
+// Path internal Next.js yang tidak boleh diintersep SW
+const NO_CACHE_PATHS = [
+  '/api/',  // SEMUA Next.js API routes — rss-proxy, econ-calendar, dsb
 ];
 
 const NEXT_INTERNAL_PATTERNS = [
@@ -65,6 +71,8 @@ self.addEventListener('fetch', (event) => {
   if (!url.protocol.startsWith('http')) return;
   if (NO_CACHE_PATTERNS.some((p) => url.hostname.includes(p))) return;
   if (NEXT_INTERNAL_PATTERNS.some((p) => url.pathname.startsWith(p))) return;
+  // API routes Next.js — bypass SW sepenuhnya, selalu network
+  if (NO_CACHE_PATHS.some((p) => url.pathname.startsWith(p))) return;
 
   // CDN → Cache First
   if (CDN_PATTERNS.some((p) => url.hostname.includes(p))) {

@@ -88,6 +88,85 @@ export default function PageHome({
         </div>
       </div>
 
+      {/* ── BONUS EKSKLUSIF ── */}
+      <div className="home-bonus-section">
+        <div className="home-bonus-eyebrow">✦ Bonus Eksklusif</div>
+        <div className="home-bonus-title">
+          Semua yang kamu<br />dapat <em>ada di sini.</em>
+        </div>
+        <p className="home-bonus-sub">
+          Download e-book dan bergabung ke komunitas trader — bagian dari paket Journalyze kamu.
+        </p>
+
+        <div className="home-bonus-grid">
+
+          {/* E-BOOK 1 */}
+          <a
+            className="home-bonus-card"
+            href="https://drive.google.com/uc?export=download&id=1awMIAUKsxRKkz4y71O4VXriDMjzWsNnV"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <div className="hb-icon hb-icon-green">📊</div>
+            <div className="hb-badge hb-badge-green">✨ Bonus E-Book #1</div>
+            <div className="hb-title">E-Book Candlestick Pattern</div>
+            <div className="hb-desc">
+              Panduan lengkap 12+ pola candlestick dengan contoh nyata, cara entry, SL, TP,
+              dan kombinasi dengan Support &amp; Resistance.
+            </div>
+            <div className="hb-note">Klik untuk menyimpan salinan e-book pribadi kamu.</div>
+            <div className="hb-btn hb-btn-green">📥 Download E-Book →</div>
+          </a>
+
+          {/* E-BOOK 2 */}
+          <a
+            className="home-bonus-card"
+            href="https://drive.google.com/uc?export=download&id=1LF8C84FJImpw2QidWRaDUFxK0m17-dL4"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <div className="hb-icon hb-icon-blue">📈</div>
+            <div className="hb-badge hb-badge-blue">✨ Bonus E-Book #2</div>
+            <div className="hb-title">E-Book Support &amp; Resistance</div>
+            <div className="hb-desc">
+              Panduan lengkap cara menentukan S&amp;R, role reversal, bounce vs breakout,
+              3 strategi trading, dan multi timeframe analysis.
+            </div>
+            <div className="hb-note">Klik untuk menyimpan salinan e-book pribadi kamu.</div>
+            <div className="hb-btn hb-btn-blue">📥 Download E-Book →</div>
+          </a>
+
+          {/* KOMUNITAS */}
+          <a
+            className="home-bonus-card"
+            href="https://chat.whatsapp.com/ElTxKk7yP68CcRr6mf9T87?mode=gi_t"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <div className="hb-icon hb-icon-purple">💬</div>
+            <div className="hb-badge hb-badge-purple">💬 Bonus Komunitas</div>
+            <div className="hb-title">Grup Komunitas &amp; Konsultasi Eksklusif</div>
+            <div className="hb-desc">
+              Bergabung dengan trader aktif Indonesia. Diskusi harian, sharing strategi,
+              evaluasi bareng, dan konsultasi personal dari tim Journalyze.
+            </div>
+            <div className="hb-note">Klik link agar kamu punya akses grup komunitas.</div>
+            <div className="hb-btn hb-btn-purple">💬 Gabung Komunitas →</div>
+          </a>
+
+        </div>
+
+        <div className="hb-footer-note">
+          <span>💡</span>
+          <span>
+            Kamu mendapatkan akses ini sebagai bagian dari pembelian{' '}
+            <strong>Journalyze Full Package</strong>. Simpan link e-book dan komunitas
+            baik-baik — akses bersifat permanen.
+          </span>
+        </div>
+      </div>
+      {/* ── END BONUS EKSKLUSIF ── */}
+
       {/* PANDUAN */}
       <div className="home-guide" id="panduan-section">
         <div className="home-guide-head">

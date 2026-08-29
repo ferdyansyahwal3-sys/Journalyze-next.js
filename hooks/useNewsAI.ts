@@ -236,8 +236,9 @@ export function useNewsAI(): UseNewsAIReturn {
           ? localStorage.getItem(LS_GEMINI_NEWS)
           : null) || geminiKey;
 
-        // Model: gemini-2.5-flash-lite (pengganti resmi gemini-1.5-flash-8b yang sudah deprecated)
-        const NEWS_MODEL = 'gemini-3.6-flash';
+        // gemini-3.5-flash-lite NOT_FOUND untuk new users (deprecated Aug 2026)
+        // Sesuai pesan error Google API → ganti ke gemini-3.5-flash-lite
+        const NEWS_MODEL = 'gemini-3.5-flash-lite';
         const doGeminiFetch = (key: string) => fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${NEWS_MODEL}:generateContent?key=${key}`,
           {

@@ -215,9 +215,11 @@ function mapCalEvents(evs: {date?:string;isoTime?:string;impact?:string;name?:st
 const RSS_SOURCES = [
   {url:'https://www.fxstreet.com/rss/news',name:'FXStreet'},
   {url:'https://finance.yahoo.com/rss/topstories',name:'Yahoo Finance'},
-  {url:'https://www.forexfactory.com/news?format=rss',name:'ForexFactory'},
-  {url:'https://www.dailyfx.com/feeds/all',name:'DailyFX'},
-  {url:'https://www.investing.com/rss/news_25.rss',name:'Investing.com'},
+  // forexfactory.com & dailyfx.com memblokir server-side fetch (403)
+  // Diganti dengan sumber yang support server-side request
+  {url:'https://finance.yahoo.com/rss/topstories',name:'Investing.com'},
+  {url:'https://www.marketwatch.com/rss/topstories',name:'MarketWatch'},
+  {url:'https://www.investing.com/rss/news_301.rss',name:'Investing Economy'},
 ];
 
 // ── localStorage key read helper ──────────────────────────────────────────────

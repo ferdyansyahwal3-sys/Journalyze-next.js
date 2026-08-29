@@ -8,16 +8,14 @@ import { NextRequest, NextResponse } from 'next/server';
 // (keamanan agar tidak disalahgunakan sebagai open proxy)
 const ALLOWED_DOMAINS = [
   'nfs.faireconomy.media',    // ForexFactory economic calendar JSON
-  'feeds.feedburner.com',
-  'www.dailyfx.com',
-  'www.forexfactory.com',
+  'feeds.feedburner.com',     // ForexLive
   'www.investing.com',
-  'www.forexfactory.com',
   'rss.cnn.com',
   'feeds.reuters.com',
   'www.fxstreet.com',
   'www.marketwatch.com',
   'finance.yahoo.com',
+  'www.forexlive.com',
 ];
 
 const CORS_HEADERS = {

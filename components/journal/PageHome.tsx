@@ -1,13 +1,17 @@
+'use client'
+
 "use client";
 
 export default function PageHome({
   active,
   switchPage,
   openApiKeyModal,
+  hideBonus = false,
 }: {
   active: boolean;
   switchPage: (page: string) => void;
   openApiKeyModal: () => void;
+  hideBonus?: boolean;
 }) {
   return (
     <div className={`page${active ? ' active' : ''}`} id="page-home">
@@ -89,7 +93,7 @@ export default function PageHome({
       </div>
 
       {/* ── BONUS EKSKLUSIF ── */}
-      <div className="home-bonus-section">
+      {!hideBonus && <div className="home-bonus-section">
         <div className="home-bonus-eyebrow">✦ Bonus Eksklusif</div>
         <div className="home-bonus-title">
           Semua yang kamu<br />dapat <em>ada di sini.</em>
@@ -165,7 +169,7 @@ export default function PageHome({
           </span>
         </div>
       </div>
-      {/* ── END BONUS EKSKLUSIF ── */}
+      }{/* ── END BONUS EKSKLUSIF ── */}
 
       {/* PANDUAN */}
       <div className="home-guide" id="panduan-section">

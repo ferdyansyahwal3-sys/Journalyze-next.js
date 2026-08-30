@@ -68,6 +68,7 @@ export default function DemoApp() {
           active={activePage === 'home'}
           switchPage={switchPage}
           openApiKeyModal={() => {}}
+          hideBonus
         />
         <PageRisk    active={activePage === 'risk'} />
         <PagePlan    active={activePage === 'plan'}    switchPage={switchPage} />

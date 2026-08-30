@@ -1,7 +1,27 @@
-// app/(journal)/page.tsx
-// Route group (journal) tidak menambah segment URL, jadi ini tetap
-// nyambung ke "/" — GANTIKAN app/page.tsx placeholder yang lama.
-import JournalApp from '@/components/journal/JournalApp';
+// app/journal/page.tsx
+import dynamic from 'next/dynamic';
+
+const JournalApp = dynamic(() => import('@/components/journal/JournalApp'), {
+  ssr: false,
+  loading: () => (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: '#080808'
+    }}>
+      <div style={{
+        color: '#C9A84C',
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: 14,
+        letterSpacing: 2
+      }}>
+        Loading...
+      </div>
+    </div>
+  ),
+});
 
 export default function Page() {
   return <JournalApp />;

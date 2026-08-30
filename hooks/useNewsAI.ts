@@ -3,8 +3,10 @@
 // saveNewsAnalysisCache(), hashTitle(), isAiFallbackText() di index.html
 // (baris 9128–9420).
 //
-// Tidak ada perubahan UI/UX — seluruh logika AI, cache, prompt, fallback
-// dipertahankan identik dengan source.
+// Penambahan dari versi sebelumnya:
+// - Exponential backoff untuk error 503 (1.5s → 3s → 6s)
+// - jz_gemini_news_key sebagai key khusus news (sudah ada, logika diperkuat)
+// - Semua komentar dalam bahasa Indonesia
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
@@ -33,11 +35,14 @@ export interface NewsItem {
 }
 
 // ── localStorage & Supabase keys ──────────────────────────────────────────────
-const LS_PROVIDER       = 'jz_ai_provider';
-const LS_GEMINI_KEY     = 'jz_gemini_key';
-const LS_GEMINI_NEWS    = 'jz_gemini_news_key';
-const LS_ANTHROPIC_KEY  = 'jz_anthropic_key';
-const NEWS_ANALYSIS_CACHE_KEY = 'jz_news_analysis_local'; // localStorage fallback
+const LS_PROVIDER           = 'jz_ai_provider';
+const LS_GEMINI_KEY         = 'jz_gemini_key';
+const LS_GEMINI_NEWS        = 'jz_gemini_news_key';
+const LS_ANTHROPIC_KEY      = 'jz_anthropic_key';
+const NEWS_ANALYSIS_CACHE_KEY = 'jz_news_analysis_local';
+
+// ── Delay retry: 1.5s → 3s → 6s ──────────────────────────────────────────────
+const RETRY_DELAYS = [1500, 3000, 6000];
 
 // ── Fallback text detection — identik dengan isAiFallbackText ─────────────────
 const FALLBACK_TEXTS = [
@@ -60,6 +65,39 @@ function hashTitle(title: string): string {
     h |= 0;
   }
   return 'nh_' + Math.abs(h).toString(36);
+}
+
+// ── Exponential backoff untuk error 503 ───────────────────────────────────────
+// Retry otomatis maksimal 3x, hanya untuk error 503 (service unavailable)
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  delays: number[] = RETRY_DELAYS,
+): Promise<Response> {
+  let lastErr: Error = new Error('Unknown error');
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    let r: Response;
+    try {
+      r = await fetch(url, options);
+    } catch (e) {
+      lastErr = e instanceof Error ? e : new Error(String(e));
+      if (attempt < delays.length) {
+        await new Promise(res => setTimeout(res, delays[attempt]));
+        continue;
+      }
+      throw lastErr;
+    }
+
+    // Retry hanya untuk 503
+    if (r.status === 503 && attempt < delays.length) {
+      console.warn(`[useNewsAI] Error 503, retry ke-${attempt + 1} dalam ${delays[attempt]}ms...`);
+      await new Promise(res => setTimeout(res, delays[attempt]));
+      continue;
+    }
+
+    return r;
+  }
+  throw lastErr;
 }
 
 // ── getNewsAnalysisCache — identik dengan source ──────────────────────────────
@@ -86,11 +124,10 @@ async function getNewsAnalysisCache(
       return map;
     } catch (e) {
       console.warn('[News Cache] Supabase get error:', (e as Error).message);
-      // fall through to localStorage
     }
   }
 
-  // Fallback localStorage — hanya untuk hash yang relevan
+  // Fallback localStorage
   try {
     const local = JSON.parse(localStorage.getItem(NEWS_ANALYSIS_CACHE_KEY) || '{}');
     const filtered: Record<string, { analysis: string; speculation: string }> = {};
@@ -147,12 +184,12 @@ export function useNewsAI(): UseNewsAIReturn {
   const [aiLoading, setAiLoading] = useState(false);
   const analyzingRef = useRef(false);
 
-  // ── analyzeNews — port 1:1 dari generateAnalysis() di index.html ─────────
+  // ── analyzeNews — port 1:1 dari generateAnalysis() + retry 503 ───────────
   const analyzeNews = useCallback(async (
     newsItems: NewsItem[],
     userId?: string,
   ): Promise<NewsItem[]> => {
-    // Guard — identik dengan _aiAnalyzing check
+    // Guard anti double-call
     if (analyzingRef.current) {
       console.warn('[AI] analyzeNews sudah berjalan, skip');
       return newsItems;
@@ -160,17 +197,11 @@ export function useNewsAI(): UseNewsAIReturn {
     analyzingRef.current = true;
     setAiLoading(true);
 
-    const provider = (typeof window !== 'undefined'
-      ? localStorage.getItem(LS_PROVIDER)
-      : null) || 'gemini';
-    const geminiKey = (typeof window !== 'undefined'
-      ? localStorage.getItem(LS_GEMINI_KEY)
-      : null) || '';
-    const claudeKey = (typeof window !== 'undefined'
-      ? localStorage.getItem(LS_ANTHROPIC_KEY)
-      : null) || '';
+    const provider   = (typeof window !== 'undefined' ? localStorage.getItem(LS_PROVIDER)      : null) || 'gemini';
+    const geminiKey  = (typeof window !== 'undefined' ? localStorage.getItem(LS_GEMINI_KEY)    : null) || '';
+    const claudeKey  = (typeof window !== 'undefined' ? localStorage.getItem(LS_ANTHROPIC_KEY) : null) || '';
 
-    // Filter pending — identik dengan source: prioritas high → medium, max 4
+    // Filter pending — prioritas high → medium, max 4 item
     const FALLBACK_MARKER = 'Tambahkan API key';
     const pendingAll = newsItems.filter(
       n => !n.analysis || n._aiFallback || (n.speculation && n.speculation.includes(FALLBACK_MARKER))
@@ -186,7 +217,7 @@ export function useNewsAI(): UseNewsAIReturn {
       return newsItems;
     }
 
-    // ── Cek Supabase / localStorage cache dulu ───────────────────────────
+    // ── Cek cache (Supabase → localStorage) ──────────────────────────────
     try {
       const cached = await getNewsAnalysisCache(needAnalysis.map(n => n.title), userId);
       const stillNeed: NewsItem[] = [];
@@ -204,18 +235,17 @@ export function useNewsAI(): UseNewsAIReturn {
         setAiLoading(false);
         return newsItems;
       }
-      // Replace needAnalysis isi dengan yang belum ter-cache
       needAnalysis.length = 0;
       stillNeed.forEach(n => needAnalysis.push(n));
     } catch (e) {
       console.warn('[News Cache] get error:', (e as Error).message);
     }
 
-    // ── Cek API key tersedia ─────────────────────────────────────────────
+    // ── Cek API key tersedia ──────────────────────────────────────────────
     const apiKey = provider === 'gemini' ? geminiKey : claudeKey;
     if (!apiKey) {
       needAnalysis.forEach(n => {
-        if (!n.analysis) n.analysis = 'Berita ini berpotensi mempengaruhi pergerakan pasar. Pantau level support/resistance kunci.';
+        if (!n.analysis)   n.analysis   = 'Berita ini berpotensi mempengaruhi pergerakan pasar. Pantau level support/resistance kunci.';
         if (!n.speculation) n.speculation = 'Tambahkan API key Gemini/Claude di Pengaturan untuk analisis & spekulasi otomatis.';
         n._aiFallback = true;
       });
@@ -230,40 +260,42 @@ export function useNewsAI(): UseNewsAIReturn {
     try {
       let txt = '';
 
-      // ── Gemini ──────────────────────────────────────────────────────────
+      // ── Gemini — dengan fetchWithRetry untuk 503 ──────────────────────
       if (provider === 'gemini' && geminiKey) {
+        // Pakai news key jika ada, fallback ke main key
         const geminiNewsKey = (typeof window !== 'undefined'
           ? localStorage.getItem(LS_GEMINI_NEWS)
           : null) || geminiKey;
 
-        // gemini-3.5-flash-lite NOT_FOUND untuk new users (deprecated Aug 2026)
-        // Sesuai pesan error Google API → ganti ke gemini-3.5-flash-lite
         const NEWS_MODEL = 'gemini-3.5-flash-lite';
-        const doGeminiFetch = (key: string) => fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${NEWS_MODEL}:generateContent?key=${key}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { maxOutputTokens: 800, temperature: 0.4 },
-            }),
-            signal: AbortSignal.timeout(30000),
-          }
-        );
 
-        // Coba news key dulu — identik dengan source
-        let r = await doGeminiFetch(geminiNewsKey);
+        const buildGeminiOptions = (): RequestInit => ({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 800, temperature: 0.4 },
+          }),
+          signal: AbortSignal.timeout(30000),
+        });
 
+        const buildGeminiUrl = (key: string) =>
+          `https://generativelanguage.googleapis.com/v1beta/models/${NEWS_MODEL}:generateContent?key=${key}`;
+
+        // Coba news key dulu, dengan retry 503
+        let r = await fetchWithRetry(buildGeminiUrl(geminiNewsKey), buildGeminiOptions());
+
+        // Handling 429 — identik dengan source
         if (!r.ok) {
           if (r.status === 429) {
             await new Promise(res => setTimeout(res, 3000));
+            // Coba main key jika news key berbeda
             if (geminiNewsKey !== geminiKey) {
-              r = await doGeminiFetch(geminiKey);
+              r = await fetchWithRetry(buildGeminiUrl(geminiKey), buildGeminiOptions());
             }
             if (!r.ok && r.status === 429) {
               await new Promise(res => setTimeout(res, 5000));
-              r = await doGeminiFetch(geminiNewsKey);
+              r = await fetchWithRetry(buildGeminiUrl(geminiNewsKey), buildGeminiOptions());
             }
           }
         }
@@ -276,49 +308,52 @@ export function useNewsAI(): UseNewsAIReturn {
           console.warn('[AI] Gemini error:', r.status, errBody.slice(0, 300));
           if (r.status === 429) {
             needAnalysis.forEach(n => {
-              if (!n.analysis) n.analysis = 'Pantau pergerakan market. (Rate limit — auto-retry saat refresh)';
+              if (!n.analysis)   n.analysis   = 'Pantau pergerakan market. (Rate limit — auto-retry saat refresh)';
               if (!n.speculation) n.speculation = 'Cek chart untuk konfirmasi sinyal entry/exit.';
               n._aiFallback = true;
             });
           } else if (r.status === 404) {
             needAnalysis.forEach(n => {
-              if (!n.analysis) n.analysis = 'Model AI tidak tersedia (404). Cek versi model di Pengaturan AI.';
+              if (!n.analysis)   n.analysis   = 'Model AI tidak tersedia (404). Cek versi model di Pengaturan AI.';
               if (!n.speculation) n.speculation = 'Hubungi developer jika error ini terus muncul.';
               n._aiFallback = true;
             });
           } else {
             needAnalysis.forEach(n => {
-              if (!n.analysis) n.analysis = 'Pantau pergerakan market terkait berita ini.';
+              if (!n.analysis)   n.analysis   = 'Pantau pergerakan market terkait berita ini.';
               if (!n.speculation) n.speculation = 'Konfirmasi sinyal di chart sebelum entry.';
               n._aiFallback = true;
             });
           }
         }
 
-      // ── Claude ──────────────────────────────────────────────────────────
+      // ── Claude — dengan fetchWithRetry untuk 503 ──────────────────────
       } else if (provider === 'claude' && claudeKey) {
-        const r = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': claudeKey,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true',
+        const r = await fetchWithRetry(
+          'https://api.anthropic.com/v1/messages',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': claudeKey,
+              'anthropic-version': '2023-06-01',
+              'anthropic-dangerous-direct-browser-access': 'true',
+            },
+            body: JSON.stringify({
+              model: 'claude-haiku-4-5-20251001',
+              max_tokens: 1200,
+              messages: [{ role: 'user', content: prompt }],
+            }),
+            signal: AbortSignal.timeout(30000),
           },
-          body: JSON.stringify({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 1200,
-            messages: [{ role: 'user', content: prompt }],
-          }),
-          signal: AbortSignal.timeout(30000),
-        });
+        );
         if (r.ok) {
           const d = await r.json();
           txt = d?.content?.[0]?.text || '';
         }
       }
 
-      // ── Parse hasil AI — identik dengan source ───────────────────────
+      // ── Parse hasil AI — identik dengan source ────────────────────────
       if (txt) {
         const clean = txt.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
         const arrMatch = clean.match(/\[[\s\S]*\]/);
@@ -337,15 +372,12 @@ export function useNewsAI(): UseNewsAIReturn {
               if (p.scenario_bull) needAnalysis[i].scenario_bull = p.scenario_bull;
               if (p.speculation)   needAnalysis[i].speculation   = p.speculation;
               if (p.desc)          needAnalysis[i].desc          = p.desc;
-              // Tandai bukan fallback kalau AI berhasil
               if (p.analysis && p.speculation) needAnalysis[i]._aiFallback = false;
             }
           });
 
-          // Item yang tidak dapat hasil parse → tetap fallback
           needAnalysis.forEach(n => { if (n._aiFallback !== false) n._aiFallback = true; });
 
-          // Simpan ke cache hanya yang real (bukan fallback)
           const realResults = needAnalysis.filter(n => n._aiFallback === false);
           if (realResults.length) saveNewsAnalysisCache(realResults, userId).catch(() => {});
         }
@@ -354,7 +386,7 @@ export function useNewsAI(): UseNewsAIReturn {
     } catch (e) {
       console.warn('[AI] analyzeNews error:', (e as Error).message);
       needAnalysis.forEach(n => {
-        if (!n.analysis) n.analysis = 'Pantau pergerakan market terkait berita ini.';
+        if (!n.analysis)   n.analysis   = 'Pantau pergerakan market terkait berita ini.';
         if (!n.speculation) n.speculation = 'Konfirmasi sinyal di chart sebelum entry.';
         n._aiFallback = true;
       });

@@ -1,10 +1,28 @@
-/**
- * app/demo/page.tsx
- * Route /demo — full journal experience, no auth, no cloud save
- * Data hanya di localStorage, tidak sync ke Supabase
- */
-import DemoApp from '@/components/demo/DemoApp';
+// app/demo/page.tsx
+import dynamic from 'next/dynamic';
 
-export default function DemoPage() {
+const DemoApp = dynamic(() => import('@/components/demo/DemoApp'), {
+  ssr: false,
+  loading: () => (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: '#080808'
+    }}>
+      <div style={{
+        color: '#C9A84C',
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: 14,
+        letterSpacing: 2
+      }}>
+        Loading...
+      </div>
+    </div>
+  ),
+});
+
+export default function Page() {
   return <DemoApp />;
 }

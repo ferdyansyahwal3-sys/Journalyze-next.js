@@ -1,4 +1,4 @@
-// app/layout.tsx — root layout (WAJIB ada, satu-satunya tempat <html>/<body>)
+// app/layout.tsx — root layout (WAJIB ada, satu-satunya tempat <html>/<body suppressHydrationWarning>)
 import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
 
@@ -33,7 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="apple-touch-icon" href="/icon-192.png" />
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
-      <body>
+      <body suppressHydrationWarning>
         {children}
 
         {/* Service Worker Registration */}

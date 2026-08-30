@@ -1,3 +1,5 @@
+'use client'
+
 // store/useTradeStore.ts
 // Zustand store untuk trades & DW — pengganti variabel global `trades` dan `dwList`
 // di index.html. Semua komponen (PageData, PageFilter, PageWeekly, PageMonthly)

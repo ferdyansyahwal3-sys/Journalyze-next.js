@@ -1,3 +1,5 @@
+'use client'
+
 // components/journal/PagePlaceholder.tsx
 // Placeholder SEMENTARA untuk konten 7 halaman (home/risk/plan/data/filter/
 // weekly/monthly/news) — isinya menyusul Phase 4+ sesuai roadmap. Wrapper

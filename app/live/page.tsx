@@ -1,31 +1,28 @@
-/**
- * app/live/page.tsx
- * Phase 10 — /live route entry point (Server Component)
- *
- * Pola sama dengan (journal)/page.tsx:
- *   page.tsx (server, default) → <LiveApp /> (client, 'use client')
- *
- * useSearchParams() wajib dibungkus <Suspense> di Next.js 14 App Router.
- * Dynamic import dengan ssr:false supaya tidak ada hydration mismatch
- * dari localStorage (theme) dan searchParams.
- */
-
-import { Suspense } from 'react';
+// app/live/page.tsx
 import dynamic from 'next/dynamic';
-import { LiveLoadingSkeleton } from '../../components/live/LiveLoadingSkeleton';
 
-const LiveApp = dynamic(
-  () => import('../../components/live/LiveApp'),
-  {
-    ssr: false,
-    loading: () => <LiveLoadingSkeleton />,
-  }
-);
+const LiveApp = dynamic(() => import('@/components/live/LiveApp'), {
+  ssr: false,
+  loading: () => (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: '#080808'
+    }}>
+      <div style={{
+        color: '#C9A84C',
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: 14,
+        letterSpacing: 2
+      }}>
+        Loading...
+      </div>
+    </div>
+  ),
+});
 
-export default function LivePage() {
-  return (
-    <Suspense fallback={<LiveLoadingSkeleton />}>
-      <LiveApp />
-    </Suspense>
-  );
+export default function Page() {
+  return <LiveApp />;
 }

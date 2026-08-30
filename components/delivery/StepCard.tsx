@@ -1,3 +1,5 @@
+'use client'
+
 // components/delivery/StepCard.tsx
 // Dipindah dari delivery.html baris 232-283 — 3 step-card yang polanya
 // sama (nomor, badge, judul, desc, note, tombol) disatukan jadi 1

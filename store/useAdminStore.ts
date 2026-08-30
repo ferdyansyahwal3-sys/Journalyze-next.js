@@ -1,3 +1,5 @@
+'use client'
+
 // store/useAdminStore.ts
 // Extended: tambah tab 'pixel' untuk PixelPanel
 import { create } from 'zustand';

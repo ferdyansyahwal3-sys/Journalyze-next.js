@@ -1,8 +1,4 @@
 // components/journal/BottomNav.tsx
-// Dipindah dari index.html baris 3208-3292 (markup) + bnNav/updateBotNav/
-// toggleMoreDrawer/closeMoreDrawer (baris 4995-5058). Di React, active
-// state cukup derived dari `activePage` — tidak perlu imperative
-// classList.toggle per tombol seperti aslinya.
 'use client';
 
 import { useJournalStore, BN_MAIN, BN_MORE, JournalPage } from '@/store/useJournalStore';
@@ -22,7 +18,19 @@ const MORE_ICONS: Record<string, { icon: string; label: string }> = {
   news: { icon: '📰', label: 'News Forex' },
 };
 
-export default function BottomNav() {
+interface BottomNavProps {
+  apiKeyActive?: boolean;
+  notifGranted?: boolean;
+  onOpenApiKey?: () => void;
+  onOpenNotif?: () => void;
+}
+
+export default function BottomNav({
+  apiKeyActive = false,
+  notifGranted = false,
+  onOpenApiKey,
+  onOpenNotif,
+}: BottomNavProps) {
   const activePage = useJournalStore((s) => s.activePage);
   const setActivePage = useJournalStore((s) => s.setActivePage);
   const moreDrawerOpen = useJournalStore((s) => s.moreDrawerOpen);
@@ -38,14 +46,25 @@ export default function BottomNav() {
     setActivePage(id);
   };
 
+  const handleOpenApiKey = () => {
+    closeMoreDrawer();
+    onOpenApiKey?.();
+  };
+
+  const handleOpenNotif = () => {
+    closeMoreDrawer();
+    onOpenNotif?.();
+  };
+  const handleOpenProfile = () => { closeMoreDrawer(); setActivePage('profile' as any); };
+
   const email = currentUser?.email || '';
 
   return (
     <>
-      {/* Overlay gelap saat drawer terbuka — index.html baris 3213 */}
+      {/* Overlay gelap saat drawer terbuka */}
       <div className={`bn-overlay ${moreDrawerOpen ? 'show' : ''}`} onClick={closeMoreDrawer}></div>
 
-      {/* More drawer — index.html baris 3216-3264 */}
+      {/* More drawer */}
       <div className={`bn-more-drawer ${moreDrawerOpen ? 'open' : ''}`}>
         <div className="bn-drawer-handle"></div>
         <div className="bn-drawer-title">Menu Lainnya</div>
@@ -67,22 +86,42 @@ export default function BottomNav() {
             </button>
           </div>
         </div>
+
+        {/* ── API Key ── */}
         <div className="bn-drawer-theme" style={{ marginTop: 12, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
           <span className="bn-drawer-theme-label">API Key (AI Analisis Foto)</span>
-          {/* TODO Phase 6: openApiKeyModal() */}
-          <button className="btn-apikey key-warn" title="Hubungkan API Key untuk fitur analisis foto" onClick={toggleMoreDrawer}>
+          <button
+            className={`btn-apikey ${apiKeyActive ? 'key-active' : 'key-warn'}`}
+            title="Hubungkan API Key untuk fitur analisis foto"
+            onClick={handleOpenApiKey}
+          >
             <div className="key-dot"></div>
             <span>API Key</span>
           </button>
         </div>
+
+        {/* ── Notifikasi ── */}
         <div className="bn-drawer-theme" style={{ marginTop: 12, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
           <span className="bn-drawer-theme-label">Notifikasi &amp; Pengingat</span>
-          {/* TODO Phase 7: openNotifModal() */}
-          <button className="btn-notif" title="Pengaturan Notifikasi" onClick={toggleMoreDrawer}>
-            <span>🔔</span>
+          <button
+            className={`btn-notif ${notifGranted ? 'notif-on' : ''}`}
+            title="Pengaturan Notifikasi"
+            onClick={handleOpenNotif}
+          >
+            <span>{notifGranted ? '🔔' : '🔕'}</span>
             <span>Notif</span>
           </button>
         </div>
+
+        {/* ── User & Logout ── */}
+        {/* Profil */}
+        <div className="bn-drawer-theme" style={{ marginTop: 12, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+          <span className="bn-drawer-theme-label">Akun</span>
+          <button className="bn-drawer-item" style={{ justifyContent:'center' }} onClick={handleOpenProfile}>
+            👤 Profil Saya
+          </button>
+        </div>
+
         <div style={{ margin: '14px 0 0', padding: '14px 0 0', borderTop: '1px solid var(--gold-bd)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -111,7 +150,7 @@ export default function BottomNav() {
         </div>
       </div>
 
-      {/* Bottom nav bar — index.html baris 3267-3292 */}
+      {/* Bottom nav bar */}
       <nav className="bot-nav">
         {BN_MAIN.map((p) => (
           <button key={p} className={`bn-btn ${activePage === p ? 'active' : ''}`} onClick={() => bnNav(p)}>

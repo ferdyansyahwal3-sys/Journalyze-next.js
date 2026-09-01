@@ -267,7 +267,7 @@ export default function HomeApp() {
                   <a href="/journal" className="nav-dd-item">
                     <span>📊</span><span>Jurnal Saya</span>
                   </a>
-                  <a href="/journal/profile" className="nav-dd-item">
+                  <a href="/journal?page=profile" className="nav-dd-item">
                     <span>👤</span><span>Profil</span>
                   </a>
                   <div className="nav-dd-divider"/>

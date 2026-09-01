@@ -19,6 +19,7 @@ import PageMonthly from './PageMonthly';
 import PageNews from './PageNews';
 import ApiKeyModal from './ApiKeyModal';
 import NotifModal from './NotifModal';
+import PageProfile from './PageProfile';
 
 // ── Phase 13 helpers ──
 function readApiKeyActive(): boolean {
@@ -56,6 +57,11 @@ export default function JournalApp() {
     // Phase 13: hydrate button states
     setApiKeyActive(readApiKeyActive());
     setNotifGranted(readNotifGranted());
+
+    // Baca query param ?page=
+    const params = new URLSearchParams(window.location.search);
+    const pageParam = params.get('page');
+    if (pageParam) setActivePage(pageParam as JournalPage);
   }, []);
 
   const handleApiKeySaved = useCallback((hasKey: boolean) => {
@@ -90,8 +96,16 @@ export default function JournalApp() {
         <PageWeekly active={activePage === 'weekly'} />
         <PageMonthly active={activePage === 'monthly'} />
         <PageNews active={activePage === 'news'} onOpenApiKeyModal={() => setApiKeyOpen(true)} />
+        <PageProfile active={activePage === 'profile'} onOpenApiKey={() => setApiKeyOpen(true)} onOpenNotif={() => setNotifOpen(true)} />
       </div>
-      <BottomNav />
+
+      {/* Pass props ke BottomNav agar tombol API Key & Notif di drawer bisa buka modal */}
+      <BottomNav
+        apiKeyActive={apiKeyActive}
+        notifGranted={notifGranted}
+        onOpenApiKey={() => setApiKeyOpen(true)}
+        onOpenNotif={() => setNotifOpen(true)}
+      />
       <ConfirmModal />
       <Toast />
 

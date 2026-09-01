@@ -116,6 +116,9 @@ export default function Topbar({
             🔍
           </button>
         </div>
+        <div className="user-menu-item" onClick={() => { toggleUserMenu(); setActivePage('profile'); }}>
+          👤 Profil Saya
+        </div>
         <div className="user-menu-item danger" onClick={doLogout}>
           🚪 Keluar
         </div>

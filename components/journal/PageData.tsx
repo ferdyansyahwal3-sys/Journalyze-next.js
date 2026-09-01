@@ -1,6 +1,7 @@
 // components/journal/PageData.tsx
 'use client';
 
+import ShareLiveButton from '@/components/journal/ShareLiveButton';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useJournalStore } from '@/store/useJournalStore';
 import { useTradeStore, recalcAll } from '@/store/useTradeStore';
@@ -793,7 +794,7 @@ export default function PageData({ active }: { active: boolean }) {
               </button>
             )}
             <button className="btn btn-danger btn-sm" style={{ fontSize: '11px' }} onClick={handleResetTrades}>🗑️ Reset Data</button>
-            <button className="btn btn-ghost btn-sm" style={{ borderColor: 'var(--gold-bd)', color: 'var(--gold2)', fontSize: '11px' }} onClick={() => showToast('Fitur Share tersedia di versi production', 'success')}>✦ Share</button>
+            <ShareLiveButton />
             <button className="btn btn-gold btn-sm" onClick={openAddModal}>+ Tambah Trade</button>
           </div>
         </div>

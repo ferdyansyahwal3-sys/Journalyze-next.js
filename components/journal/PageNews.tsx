@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNewsAI } from '@/hooks/useNewsAI';
 
 // ── Constants (identik dengan index.html) ─────────────────────────────────────
-const NEWS_CACHE_KEY = 'jz_forex_news_v3';
+const NEWS_CACHE_KEY = 'jz_forex_news_v8';
 const NEWS_CACHE_TTL = 30 * 60 * 1000;
 const NEWS_PER_PAGE  = 9;
 const EC_CACHE_KEY   = 'jz_econ_cal_v2';
@@ -35,6 +35,10 @@ type Cat = 'all'|'forex'|'gold'|'crypto'|'economic'|'fed';
 type SortMode = 'newest'|'impact';
 
 // ── Helpers (port dari index.html) ────────────────────────────────────────────
+function decodeHtml(s: string): string {
+  return (s||'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#x27;/g,"'").replace(/&#x2019;/g,"'").replace(/&#x2018;/g,"'").replace(/&apos;/g,"'").replace(/&#\d+;/g, m => String.fromCharCode(parseInt(m.slice(2,-1))));
+}
+
 function escHtml(s: string): string {
   return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -91,7 +95,7 @@ function detectImpact(title: string, desc: string): NewsItem['impact'] {
     'unemployment rate','jobless claims','powell','lagarde','fed chair','monetary policy statement',
     'monetary policy decision','ecb decision','boj decision','boe decision','rba decision'];
   const lo = ['minor','slight','stable','sideways','consolidat','unchanged','ipo','earnings report',
-    'quarterly result','dividend','stock split','drone','sports','weather','entertainment'];
+    'quarterly result','dividend','stock split','drone','sports','weather','entertainment','asylum','immigration','refugee','lawsuit','court','housing market','real estate','mortgage','celebrity','personal finance'];
   if (hi.some(w => txt.includes(w))) return 'high';
   if (lo.some(w => txt.includes(w))) return 'low';
   return 'medium';
@@ -130,8 +134,8 @@ function parseRSSXML(xml: string, srcUrl: string): {title:string;desc:string;lin
   let m;
   while ((m = itemRe.exec(xml)) !== null) {
     const block = m[1];
-    const title = getFromBlock(block,'title');
-    const desc  = (getFromBlock(block,'description')||getFromBlock(block,'summary')).replace(/<[^>]+>/g,'').slice(0,220);
+    const title = decodeHtml(getFromBlock(block,'title'));
+    const desc  = decodeHtml((getFromBlock(block,'description')||getFromBlock(block,'summary')).replace(/<[^>]+>/g,'').slice(0,220));
     const link  = getFromBlock(block,'link') || srcUrl;
     const pubDate = getFromBlock(block,'pubDate')||getFromBlock(block,'dc:date')||getFromBlock(block,'published')||new Date().toISOString();
     const thumbnail = getThumbnail(block);
@@ -142,7 +146,7 @@ function parseRSSXML(xml: string, srcUrl: string): {title:string;desc:string;lin
     const entryRe = /<entry[^>]*>([\s\S]*?)<\/entry>/g;
     while ((m = entryRe.exec(xml)) !== null) {
       const block = m[1];
-      const title = getFromBlock(block,'title');
+      const title = decodeHtml(getFromBlock(block,'title'));
       const desc  = (getFromBlock(block,'summary')||getFromBlock(block,'content')||getFromBlock(block,'description')).replace(/<[^>]+>/g,'').slice(0,220);
       const lhref = block.match(/<link[^>]+href=["']([^"']+)["']/);
       const link  = lhref ? lhref[1] : (getFromBlock(block,'link')||srcUrl);
@@ -214,12 +218,10 @@ function mapCalEvents(evs: {date?:string;isoTime?:string;impact?:string;name?:st
 
 const RSS_SOURCES = [
   {url:'https://www.fxstreet.com/rss/news',name:'FXStreet'},
-  {url:'https://finance.yahoo.com/rss/topstories',name:'Yahoo Finance'},
-  // forexfactory.com & dailyfx.com memblokir server-side fetch (403)
-  // Diganti dengan sumber yang support server-side request
-  {url:'https://finance.yahoo.com/rss/topstories',name:'Investing.com'},
-  {url:'https://www.marketwatch.com/rss/topstories',name:'MarketWatch'},
+  {url:'https://www.forexlive.com/feed/news',name:'ForexLive'},
   {url:'https://www.investing.com/rss/news_301.rss',name:'Investing Economy'},
+  {url:'https://www.investing.com/rss/news_14.rss',name:'Investing Forex'},
+  {url:'https://www.investing.com/rss/news_2.rss',name:'Investing Commodities'},
 ];
 
 // ── localStorage key read helper ──────────────────────────────────────────────
@@ -343,7 +345,14 @@ export default function PageNews({
         const k = n.title.slice(0,35).toLowerCase().replace(/\s+/g,'');
         if (seen.has(k)) return false; seen.add(k); return true;
       });
-      items.sort((a,b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+      items.sort((a,b) => {
+        const aXau = (a.pairs||[]).includes('XAUUSD') ? 0 : 1;
+        const bXau = (b.pairs||[]).includes('XAUUSD') ? 0 : 1;
+        if (aXau !== bXau) return aXau - bXau;
+        const impOrd: Record<string,number> = {high:0,medium:1,low:2};
+        if (a.impact !== b.impact) return (impOrd[a.impact]||1)-(impOrd[b.impact]||1);
+        return new Date(b.time).getTime() - new Date(a.time).getTime();
+      });
 
       // Phase 14: analyze dengan AI setelah fetch
       const analyzed = await triggerAI(items);
@@ -445,8 +454,8 @@ export default function PageNews({
     Math.round((Date.now()-lastFetch)/3600000)+'j lalu'
   ) : '—';
 
-  const highItems = allData.filter(n => n.impact==='high').slice(0,2);
-  const medItems  = allData.filter(n => n.impact==='medium'||n.impact==='med' as unknown).slice(0,2);
+  const highItems = allData.filter(n => n.impact==='high').slice(0,3);
+  const medItems  = allData.filter(n => n.impact==='medium'||n.impact==='med' as unknown).slice(0,3);
   const hasSpec   = highItems.length > 0 || medItems.length > 0;
 
   // ── Phase 14: Reset AI cache + reload ────────────────────────────────────

@@ -4,7 +4,7 @@
 import { create } from 'zustand';
 import type { User } from '@supabase/supabase-js';
 
-export type JournalPage = 'home' | 'risk' | 'plan' | 'data' | 'filter' | 'weekly' | 'monthly' | 'news';
+export type JournalPage = 'home' | 'risk' | 'plan' | 'data' | 'filter' | 'weekly' | 'monthly' | 'news' | 'profile';
 
 export const BN_MAIN: JournalPage[] = ['home', 'risk', 'plan', 'data', 'filter'];
 export const BN_MORE: JournalPage[] = ['weekly', 'monthly', 'news'];

@@ -3,8 +3,8 @@
 //  Ported from HTML version → Next.js App Router
 // ════════════════════════════════════════════════════════════
 
-const CACHE_NAME = 'journalyze-v1';
-const CACHE_VERSION = '1.2.0'; // Fix: bypass SW untuk /api/ routes
+const CACHE_NAME = 'journalyze-v2';
+const CACHE_VERSION = '1.5.0'; // Fix: bypass SW untuk /api/ routes
 
 const STATIC_ASSETS = [
   '/',
@@ -13,7 +13,7 @@ const STATIC_ASSETS = [
   '/icon-512.png',
 ];
 
-const CDN_CACHE_NAME = 'journalyze-cdn-v1';
+const CDN_CACHE_NAME = 'journalyze-cdn-v2';
 const CDN_PATTERNS = [
   'fonts.googleapis.com',
   'fonts.gstatic.com',
@@ -106,31 +106,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigasi → Network First, fallback cache
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request)
-        .then((res) => {
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, res.clone()));
-          return res;
-        })
-        .catch(() => caches.match('/') || caches.match(event.request))
-    );
-    return;
-  }
+  // Navigasi → bypass SW sepenuhnya, biarkan Next.js handle
+  if (event.request.mode === 'navigate') return;
 
-  // Asset lain → Cache First
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request).then((res) => {
-        if (res.ok) {
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, res.clone()));
-        }
-        return res;
-      });
-    })
-  );
+  // Asset lain → passthrough, tidak di-cache (hindari clone error)
+  return;
 });
 
 // ── Push notification ──

@@ -199,13 +199,29 @@ export function useNewsAI(): UseNewsAIReturn {
 
     // Filter pending — prioritas high → medium, max 6 item
     const FALLBACK_MARKER = 'Tambahkan API key';
-    const pendingAll = newsItems.filter(
-      n => !n.analysis || n._aiFallback || (n.speculation && n.speculation.includes(FALLBACK_MARKER))
-    );
+    const FALLBACK_TEXTS_CHECK = [
+      FALLBACK_MARKER,
+      'Pantau pergerakan market terkait',
+      'Konfirmasi sinyal di chart',
+      'Model AI tidak tersedia',
+      'Hubungi developer',
+      'Rate limit',
+    ];
+    const isFallback = (n: NewsItem) =>
+      !n.analysis ||
+      n._aiFallback === true ||
+      FALLBACK_TEXTS_CHECK.some(f => (n.analysis||'').includes(f) || (n.speculation||'').includes(f));
+
+    const pendingAll = newsItems.filter(isFallback);
     const impactRank: Record<string, number> = { high: 0, medium: 1, med: 1, low: 2 };
     pendingAll.sort((a, b) => (impactRank[a.impact] ?? 3) - (impactRank[b.impact] ?? 3));
     const needAnalysis = pendingAll.slice(0, 6);
-    needAnalysis.forEach(n => { n.analysis = ''; n.speculation = ''; });
+    // Reset field agar cache check tidak salah skip
+    needAnalysis.forEach(n => {
+      n.analysis = '';
+      n.speculation = '';
+      n._aiFallback = false;
+    });
 
     if (!needAnalysis.length) {
       analyzingRef.current = false;
@@ -285,7 +301,8 @@ Balas HANYA JSON array valid, tanpa markdown, tanpa komentar:
           ? localStorage.getItem(LS_GEMINI_NEWS)
           : null) || geminiKey;
 
-        const NEWS_MODEL = 'gemini-3.5-flash-lite';
+        // gemini-2.0-flash-lite = model terbaru yang tersedia & gratis
+        const NEWS_MODEL = 'gemini-2.0-flash-lite';
         const buildOpts = (): RequestInit => ({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -307,6 +324,16 @@ Balas HANYA JSON array valid, tanpa markdown, tanpa komentar:
             await new Promise(res => setTimeout(res, 5000));
             r = await fetchWithRetry(buildUrl(geminiNewsKey), buildOpts());
           }
+        }
+
+        // Jika 404 (model tidak ada), coba fallback ke gemini-1.5-flash-8b
+        if (!r.ok && r.status === 404) {
+          console.warn('[AI] Model tidak ditemukan, coba fallback gemini-1.5-flash-8b...');
+          const FALLBACK_MODEL = 'gemini-1.5-flash-8b';
+          r = await fetchWithRetry(
+            `https://generativelanguage.googleapis.com/v1beta/models/${FALLBACK_MODEL}:generateContent?key=${geminiNewsKey}`,
+            buildOpts()
+          ).catch(() => r);
         }
 
         if (r.ok) {

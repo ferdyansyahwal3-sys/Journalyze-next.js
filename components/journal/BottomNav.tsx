@@ -55,7 +55,7 @@ export default function BottomNav({
     closeMoreDrawer();
     onOpenNotif?.();
   };
-  const handleOpenProfile = () => { closeMoreDrawer(); setActivePage('profile' as any); };
+  const handleOpenProfile = () => { closeMoreDrawer(); setActivePage('profile'); };
 
   const email = currentUser?.email || '';
 

@@ -29,6 +29,10 @@ interface EconEvent {
   day: string; timeWIB: string; flag: string; name: string;
   forecast: string; prev: string; actual?: string;
   impact: 'high'|'medium'|'low';
+  currency?: string;
+  // detail fields dari ForexFactory
+  title?: string;
+  country?: string;
 }
 
 type Cat = 'all'|'forex'|'gold'|'crypto'|'economic'|'fed';
@@ -125,10 +129,39 @@ function parseRSSXML(xml: string, srcUrl: string): {title:string;desc:string;lin
     return m ? (m[1]||'').trim() : '';
   };
   const getThumbnail = (block: string): string => {
-    const media = block.match(/media:content[^>]*url=["']([^"']+)["']/);
-    const encl = block.match(/enclosure[^>]*url=["']([^"']+)["']/);
-    const imgTag = block.match(/<img[^>]+src=["']([^"']+)["']/);
-    return media?.[1] || encl?.[1] || imgTag?.[1] || '';
+    // 1. media:content url (paling reliable)
+    const media = block.match(/media:content[^>]*url=["']([^"']+)["']/i);
+    if (media?.[1] && media[1].match(/\.(jpg|jpeg|png|webp|gif)/i)) return media[1];
+
+    // 2. media:thumbnail
+    const mediaThumbnail = block.match(/media:thumbnail[^>]*url=["']([^"']+)["']/i);
+    if (mediaThumbnail?.[1]) return mediaThumbnail[1];
+
+    // 3. enclosure (podcast/image)
+    const encl = block.match(/enclosure[^>]*url=["']([^"']+)["']/i);
+    if (encl?.[1] && encl[1].match(/\.(jpg|jpeg|png|webp|gif)/i)) return encl[1];
+
+    // 4. img tag langsung (non-CDATA)
+    const imgTag = block.match(/<img[^>]+src=["']([^"'\"]+)["']/i);
+    if (imgTag?.[1] && !imgTag[1].includes('pixel') && !imgTag[1].includes('1x1')) return imgTag[1];
+
+    // 5. URL gambar di dalam CDATA description (Investing.com sering pakai ini)
+    const descBlock = block.match(/<description[^>]*>([\s\S]*?)<\/description>/i);
+    if (descBlock) {
+      const descContent = descBlock[1].replace(/<!?\[CDATA\[|\]\]>/g, '');
+      // Cari img src di dalam HTML description
+      const imgInDesc = descContent.match(/<img[^>]+src=["']([^"']+)["']/i);
+      if (imgInDesc?.[1] && !imgInDesc[1].includes('pixel') && !imgInDesc[1].includes('1x1')) return imgInDesc[1];
+      // Cari URL gambar langsung (format https://...jpg)
+      const urlInDesc = descContent.match(/https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|webp|gif)(?:\?[^\s"'<>]*)?/i);
+      if (urlInDesc?.[0]) return urlInDesc[0];
+    }
+
+    // 6. URL gambar di mana saja dalam block
+    const anyImgUrl = block.match(/https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|webp)(?:\?[^\s"'<>]*)?/i);
+    if (anyImgUrl?.[0] && !anyImgUrl[0].includes('pixel') && !anyImgUrl[0].includes('1x1')) return anyImgUrl[0];
+
+    return '';
   };
   const itemRe = /<item[^>]*>([\s\S]*?)<\/item>/g;
   let m;
@@ -194,7 +227,7 @@ function getTodayWIB(): string {
   return n.getUTCFullYear()+'-'+String(n.getUTCMonth()+1).padStart(2,'0')+'-'+String(n.getUTCDate()).padStart(2,'0');
 }
 
-function mapCalEvents(evs: {date?:string;isoTime?:string;impact?:string;name?:string;title?:string;forecast?:string;prev?:string;previous?:string;actual?:string;flag?:string;currency?:string}[]): EconEvent[] {
+function mapCalEvents(evs: {date?:string;isoTime?:string;impact?:string;name?:string;title?:string;forecast?:string;prev?:string;previous?:string;actual?:string;flag?:string;currency?:string;country?:string}[]): EconEvent[] {
   const DAY = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
   const ORDER = ['Sen','Sel','Rab','Kam','Jum','Sab','Min'];
   return evs
@@ -202,6 +235,7 @@ function mapCalEvents(evs: {date?:string;isoTime?:string;impact?:string;name?:st
     .map(ev => {
       const d = new Date((ev.date||ev.isoTime||''));
       const w = new Date(d.getTime()+7*3600*1000);
+      const currency = (ev.currency||ev.country||'').toUpperCase();
       return {
         day: DAY[w.getUTCDay()] || '—',
         timeWIB: String(w.getUTCHours()).padStart(2,'0')+':'+String(w.getUTCMinutes()).padStart(2,'0')+' WIB',
@@ -211,6 +245,9 @@ function mapCalEvents(evs: {date?:string;isoTime?:string;impact?:string;name?:st
         prev: ev.prev||ev.previous||'—',
         actual: ev.actual||'',
         impact: ((ev.impact||'medium').toLowerCase() as 'high'|'medium'|'low'),
+        currency,
+        title: ev.name||ev.title||'',
+        country: currency,
       };
     })
     .sort((a,b) => ORDER.indexOf(a.day) - ORDER.indexOf(b.day));
@@ -248,6 +285,7 @@ export default function PageNews({
   const [calLoading, setCalLoading] = useState(false);
   const [calTitle, setCalTitle]     = useState('📅 Economic Calendar — Minggu Ini');
   const [expandedSpec, setExpandedSpec] = useState<Record<string,boolean>>({});
+  const [expandedEvent, setExpandedEvent] = useState<number|null>(null);
   const loadingRef = useRef(false);
 
   // ── Phase 14: AI hook ─────────────────────────────────────────────────────
@@ -668,30 +706,189 @@ export default function PageNews({
               <span style={{display:'flex',alignItems:'center',gap:'4px',fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',color:'var(--green)'}}><span style={{width:'8px',height:'8px',borderRadius:'50%',background:'var(--green)',display:'inline-block'}} />Low</span>
             </div>
           </div>
-          <div className="box-body-0">
-            <div style={{padding:'4px 0',maxHeight:'497px',overflowY:'auto' as const,scrollbarWidth:'thin' as const,scrollbarColor:'var(--gold2) transparent'}}>
-              {calLoading ? (
-                <div style={{padding:'16px',textAlign:'center' as const,color:'var(--text3)',fontSize:'12px'}}>⏳ Memuat kalender...</div>
-              ) : events.length === 0 ? (
-                <div style={{padding:'16px',textAlign:'center' as const,color:'var(--text3)',fontSize:'12px'}}>Tidak ada event ekonomi minggu ini</div>
-              ) : events.map((ev, i) => (
-                <div key={i} className="event-item">
-                  <div className="event-time">
-                    <span className="event-time-day">{ev.day}</span>
-                    <span className="event-time-hour">{ev.timeWIB}</span>
-                  </div>
-                  <div className="event-flag">{ev.flag}</div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div className="event-name">{ev.name}</div>
-                    <div className="event-prev">
-                      Forecast: <strong style={{color:'var(--gold2)'}}>{ev.forecast}</strong> &middot; Prev: {ev.prev}
-                      {ev.actual && <span style={{marginLeft:'6px',color:'var(--green)',fontWeight:600}}> Actual: {ev.actual}</span>}
+          {/* Header kolom seperti Forex Factory */}
+          <div style={{
+            display:'grid',
+            gridTemplateColumns:'60px 28px 1fr 68px 68px 68px 32px 28px',
+            gap:'0',padding:'6px 14px',
+            borderBottom:'1px solid var(--border2)',
+            fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',
+            letterSpacing:'1px',textTransform:'uppercase' as const,
+            color:'var(--text3)'
+          }}>
+            <span>Waktu</span>
+            <span></span>
+            <span>Event</span>
+            <span style={{textAlign:'right' as const}}>Actual</span>
+            <span style={{textAlign:'right' as const}}>Forecast</span>
+            <span style={{textAlign:'right' as const}}>Prev</span>
+            <span style={{textAlign:'center' as const}}>●</span>
+            <span></span>
+          </div>
+          <div style={{padding:'4px 0',maxHeight:'480px',overflowY:'auto' as const,scrollbarWidth:'thin' as const,scrollbarColor:'var(--gold2) transparent'}}>
+            {calLoading ? (
+              <div style={{padding:'16px',textAlign:'center' as const,color:'var(--text3)',fontSize:'12px'}}>⏳ Memuat kalender...</div>
+            ) : events.length === 0 ? (
+              <div style={{padding:'16px',textAlign:'center' as const,color:'var(--text3)',fontSize:'12px'}}>Tidak ada event ekonomi minggu ini</div>
+            ) : events.map((ev, i) => {
+              const isExpanded = expandedEvent === i;
+              // Warna actual vs forecast
+              const actualNum = parseFloat((ev.actual||'').replace(/[^0-9.\-]/g,''));
+              const forecastNum = parseFloat((ev.forecast||'').replace(/[^0-9.\-]/g,''));
+              let actualColor = 'var(--text4)';
+              if (ev.actual) {
+                if (!isNaN(actualNum) && !isNaN(forecastNum)) {
+                  actualColor = actualNum > forecastNum ? 'var(--green)' : actualNum < forecastNum ? 'var(--red)' : 'var(--text2)';
+                } else {
+                  actualColor = 'var(--text2)';
+                }
+              }
+
+              return (
+                <div key={i} style={{borderBottom:'1px solid var(--border2)'}}>
+                  {/* Row utama */}
+                  <div
+                    style={{
+                      display:'grid',
+                      gridTemplateColumns:'60px 28px 1fr 68px 68px 68px 32px 28px',
+                      gap:'0',
+                      padding:'9px 14px',
+                      cursor:'pointer',
+                      transition:'background 0.15s',
+                      background: isExpanded ? 'var(--bg3)' : 'transparent',
+                    }}
+                    onClick={() => setExpandedEvent(isExpanded ? null : i)}
+                    onMouseEnter={e => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)'; }}
+                    onMouseLeave={e => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                  >
+                    {/* Waktu */}
+                    <div style={{display:'flex',flexDirection:'column' as const,gap:'1px'}}>
+                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',color:'var(--text3)',letterSpacing:'0.5px'}}>{ev.day}</span>
+                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'9px',color:'var(--text2)',fontWeight:600}}>{ev.timeWIB.replace(' WIB','')}</span>
+                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'7px',color:'var(--text4)'}}>WIB</span>
+                    </div>
+                    {/* Flag */}
+                    <div style={{display:'flex',alignItems:'center',fontSize:'14px'}}>{ev.flag}</div>
+                    {/* Nama event */}
+                    <div style={{display:'flex',alignItems:'center',paddingRight:'8px'}}>
+                      <span style={{fontSize:'11px',color:'var(--text1)',fontWeight:500,lineHeight:'1.3'}}>{ev.name}</span>
+                      {ev.currency && (
+                        <span style={{
+                          marginLeft:'6px',fontFamily:"'JetBrains Mono',monospace",fontSize:'7.5px',
+                          padding:'1px 5px',borderRadius:'3px',
+                          background:'rgba(255,255,255,0.06)',color:'var(--text3)',
+                          flexShrink:0,
+                        }}>{ev.currency}</span>
+                      )}
+                    </div>
+                    {/* Actual */}
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end' as const}}>
+                      <span style={{
+                        fontFamily:"'JetBrains Mono',monospace",fontSize:'11px',
+                        fontWeight: ev.actual ? 700 : 400,
+                        color: actualColor,
+                      }}>
+                        {ev.actual || '—'}
+                      </span>
+                    </div>
+                    {/* Forecast */}
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end' as const}}>
+                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'11px',color:'var(--gold2)',fontWeight:500}}>
+                        {ev.forecast !== '—' ? ev.forecast : <span style={{color:'var(--text4)'}}>—</span>}
+                      </span>
+                    </div>
+                    {/* Prev */}
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end' as const}}>
+                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'11px',color:'var(--text3)'}}>
+                        {ev.prev !== '—' ? ev.prev : <span style={{color:'var(--text4)'}}>—</span>}
+                      </span>
+                    </div>
+                    {/* Impact dot */}
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'center' as const}}>
+                      <span style={{
+                        width:'9px',height:'9px',borderRadius:'50%',display:'inline-block',
+                        background: ev.impact==='high' ? 'var(--red)' : ev.impact==='medium' ? 'var(--gold2)' : 'var(--green)',
+                        boxShadow: ev.impact==='high' ? '0 0 6px var(--red)' : 'none',
+                      }} title={ev.impact+' impact'} />
+                    </div>
+                    {/* Expand toggle */}
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'center' as const}}>
+                      <span style={{
+                        fontSize:'9px',color:'var(--text4)',
+                        transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)',
+                        transition:'transform 0.2s',
+                        display:'inline-block',
+                      }}>▾</span>
                     </div>
                   </div>
-                  <div className={`event-impact-dot ${ev.impact}`} title={ev.impact+' impact'} />
+
+                  {/* Detail panel (expand) */}
+                  {isExpanded && (
+                    <div style={{
+                      padding:'10px 14px 14px 14px',
+                      background:'var(--bg3)',
+                      borderTop:'1px solid var(--border2)',
+                    }}>
+                      {/* Stats row */}
+                      <div style={{display:'flex',gap:'0',marginBottom:'10px',borderRadius:'7px',overflow:'hidden',border:'1px solid var(--border)'}}>
+                        {[
+                          {label:'ACTUAL', value: ev.actual||'—', color: ev.actual ? actualColor : 'var(--text4)', highlight: !!ev.actual},
+                          {label:'FORECAST', value: ev.forecast, color:'var(--gold2)', highlight: false},
+                          {label:'PREVIOUS', value: ev.prev, color:'var(--text2)', highlight: false},
+                        ].map((s,si) => (
+                          <div key={si} style={{
+                            flex:1,padding:'10px 12px',
+                            background: s.highlight ? 'rgba(0,200,100,0.06)' : 'var(--bg2)',
+                            borderRight: si<2 ? '1px solid var(--border)' : 'none',
+                            textAlign:'center' as const,
+                          }}>
+                            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'7.5px',color:'var(--text4)',letterSpacing:'1.5px',textTransform:'uppercase' as const,marginBottom:'4px'}}>{s.label}</div>
+                            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'15px',fontWeight:700,color:s.color}}>{s.value}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Info */}
+                      <div style={{display:'flex',gap:'8px',flexWrap:'wrap' as const}}>
+                        <span style={{
+                          padding:'3px 8px',borderRadius:'4px',
+                          background:'rgba(255,255,255,0.05)',
+                          fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',
+                          color:'var(--text3)',
+                        }}>
+                          {ev.flag} {ev.currency || ev.country}
+                        </span>
+                        <span style={{
+                          padding:'3px 8px',borderRadius:'4px',
+                          background: ev.impact==='high'?'rgba(220,50,50,0.12)':ev.impact==='medium'?'rgba(200,160,0,0.12)':'rgba(50,200,100,0.08)',
+                          fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',
+                          color: ev.impact==='high'?'var(--red)':ev.impact==='medium'?'var(--gold2)':'var(--green)',
+                        }}>
+                          {ev.impact.toUpperCase()} IMPACT
+                        </span>
+                        <span style={{
+                          padding:'3px 8px',borderRadius:'4px',
+                          background:'rgba(255,255,255,0.05)',
+                          fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',
+                          color:'var(--text3)',
+                        }}>
+                          ⏰ {ev.timeWIB}
+                        </span>
+                        {ev.actual && !isNaN(actualNum) && !isNaN(forecastNum) && (
+                          <span style={{
+                            padding:'3px 8px',borderRadius:'4px',
+                            background: actualNum > forecastNum ? 'rgba(50,200,100,0.12)' : 'rgba(220,50,50,0.12)',
+                            fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',
+                            color: actualNum > forecastNum ? 'var(--green)' : 'var(--red)',
+                          }}>
+                            {actualNum > forecastNum ? '▲ Better Than Expected' : '▼ Worse Than Expected'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
         </div>
       </div>

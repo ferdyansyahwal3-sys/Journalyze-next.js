@@ -272,7 +272,7 @@ export default function PageProfile({ active, onOpenApiKey, onOpenNotif }: Profi
       </div>
 
       {/* ══ GRID 2 KOLOM ══ */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+      <div className="g2" style={{ marginBottom: 16 }}>
 
         {/* ── Statistik Detail ── */}
         <div className="box ai-anim d2">
@@ -295,7 +295,7 @@ export default function PageProfile({ active, onOpenApiKey, onOpenNotif }: Profi
                 padding: '9px 0',
                 borderBottom: i < arr.length - 1 ? '1px solid var(--border2)' : 'none',
               }}>
-                <span style={{ fontSize: 11, color: 'var(--text3)', fontFamily: "'JetBrains Mono',monospace", fontSize: 10 as any }}>
+                <span style={{ fontSize: 10, color: 'var(--text3)', fontFamily: "'JetBrains Mono',monospace" }}>
                   {row.label}
                 </span>
                 <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 16, fontWeight: 700, color: row.color }}>

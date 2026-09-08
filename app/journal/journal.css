@@ -500,7 +500,10 @@ hr.div{border:none;border-top:1px solid var(--border);margin:14px 0;}
 .prog-range{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);}
 
 /* ══ PLAN TABLE ══ */
-.plan-scroll{overflow-x:auto;border-radius:9px;border:1px solid var(--border);}
+/* thead ~40px + 20 × 35px row = 740px → baris ke-21 dst di-scroll */
+.plan-scroll{overflow-x:auto;overflow-y:auto;max-height:740px;border-radius:9px;border:1px solid var(--border);}
+.ptable thead th{position:sticky;top:0;z-index:2;background:var(--bg2);}
+.ptable tbody tr{height:35px;}
 .ptable{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:10.5px;min-width:640px;}
 .ptable thead tr{background:var(--gold-bg);}
 .ptable th{padding:9px 10px;text-align:left;font-size:8px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);border-bottom:1px solid var(--gold-bd);border-right:1px solid var(--border2);white-space:nowrap;}

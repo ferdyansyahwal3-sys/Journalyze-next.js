@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNewsAI } from '@/hooks/useNewsAI';
 
 // ── Constants (identik dengan index.html) ─────────────────────────────────────
-const NEWS_CACHE_KEY = 'jz_forex_news_v8';
+const NEWS_CACHE_KEY = 'jz_forex_news_v11';
 const NEWS_CACHE_TTL = 30 * 60 * 1000;
 const NEWS_PER_PAGE  = 9;
 const EC_CACHE_KEY   = 'jz_econ_cal_v2';
@@ -30,9 +30,10 @@ interface EconEvent {
   forecast: string; prev: string; actual?: string;
   impact: 'high'|'medium'|'low';
   currency?: string;
-  // detail fields dari ForexFactory
   title?: string;
   country?: string;
+  // history dari ForexFactory (5 bulan terakhir)
+  history?: {date:string; actual:string; forecast:string; previous:string}[];
 }
 
 type Cat = 'all'|'forex'|'gold'|'crypto'|'economic'|'fed';
@@ -128,38 +129,58 @@ function parseRSSXML(xml: string, srcUrl: string): {title:string;desc:string;lin
     const m = block.match(cdataRe) || block.match(plainRe);
     return m ? (m[1]||'').trim() : '';
   };
+  // Helper: cek apakah URL gambar valid (bukan icon kecil / avatar / emoji)
+  const isValidImgUrl = (url: string): boolean => {
+    if (!url) return false;
+    const u = url.toLowerCase();
+    // Skip tracker, pixel, avatar, icon, emoji
+    if (u.includes('1x1') || u.includes('pixel') || u.includes('tracking')) return false;
+    if (u.includes('gravatar') || u.includes('avatar')) return false;
+    if (u.includes('s.w.org') || u.includes('emoji')) return false;
+    if (u.includes('/icon') || u.includes('-icon') || u.includes('_icon')) return false;
+    if (u.includes('/logo') || u.includes('-logo')) return false;
+    // Skip gambar kecil: ?w=16, ?s=32, -16x16, _24x24 dll
+    if (/[?&][ws]=\d{1,2}(\D|$)/.test(u)) return false;
+    if (/[-_]\d{1,2}x\d{1,2}\./.test(u)) return false;
+    // Harus ada ekstensi gambar atau path yang wajar
+    const hasImgExt = /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(u);
+    const hasImgPath = u.includes('/wp-content/uploads/') || u.includes('/images/') || u.includes('/img/') || u.includes('/media/') || u.includes('cdn') || u.includes('editorial') || u.includes('static');
+    return hasImgExt || hasImgPath;
+  };
+
   const getThumbnail = (block: string): string => {
-    // 1. media:content url (paling reliable)
-    const media = block.match(/media:content[^>]*url=["']([^"']+)["']/i);
-    if (media?.[1] && media[1].match(/\.(jpg|jpeg|png|webp|gif)/i)) return media[1];
+    // 1. enclosure — FXStreet & Investing pakai ini
+    const encl = block.match(/enclosure[^>]*url=["']([^"']+)["']/);
+    if (encl?.[1] && isValidImgUrl(encl[1])) return encl[1];
 
-    // 2. media:thumbnail
-    const mediaThumbnail = block.match(/media:thumbnail[^>]*url=["']([^"']+)["']/i);
-    if (mediaThumbnail?.[1]) return mediaThumbnail[1];
+    // 2. media:content
+    const media = block.match(/media:content[^>]*url=["']([^"']+)["']/);
+    if (media?.[1] && isValidImgUrl(media[1])) return media[1];
 
-    // 3. enclosure (podcast/image)
-    const encl = block.match(/enclosure[^>]*url=["']([^"']+)["']/i);
-    if (encl?.[1] && encl[1].match(/\.(jpg|jpeg|png|webp|gif)/i)) return encl[1];
+    // 3. media:thumbnail
+    const mediaTh = block.match(/media:thumbnail[^>]*url=["']([^"']+)["']/);
+    if (mediaTh?.[1] && isValidImgUrl(mediaTh[1])) return mediaTh[1];
 
-    // 4. img tag langsung (non-CDATA)
-    const imgTag = block.match(/<img[^>]+src=["']([^"'\"]+)["']/i);
-    if (imgTag?.[1] && !imgTag[1].includes('pixel') && !imgTag[1].includes('1x1')) return imgTag[1];
+    // 4. content:encoded — ForexLive embed gambar di sini sebagai HTML
+    const encoded = block.match(/<content:encoded[^>]*>([\s\S]*?)<\/content:encoded>/i);
+    if (encoded) {
+      const html = encoded[1].replace(/<!?\[CDATA\[|\]\]>/g, '');
+      // Ambil SEMUA img src, cari yang valid (skip icon kecil)
+      const imgMatches = [...html.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)];
+      for (const m of imgMatches) {
+        if (isValidImgUrl(m[1])) return m[1];
+      }
+    }
 
-    // 5. URL gambar di dalam CDATA description (Investing.com sering pakai ini)
+    // 5. img tag di dalam description CDATA
     const descBlock = block.match(/<description[^>]*>([\s\S]*?)<\/description>/i);
     if (descBlock) {
       const descContent = descBlock[1].replace(/<!?\[CDATA\[|\]\]>/g, '');
-      // Cari img src di dalam HTML description
-      const imgInDesc = descContent.match(/<img[^>]+src=["']([^"']+)["']/i);
-      if (imgInDesc?.[1] && !imgInDesc[1].includes('pixel') && !imgInDesc[1].includes('1x1')) return imgInDesc[1];
-      // Cari URL gambar langsung (format https://...jpg)
-      const urlInDesc = descContent.match(/https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|webp|gif)(?:\?[^\s"'<>]*)?/i);
-      if (urlInDesc?.[0]) return urlInDesc[0];
+      const imgMatches = [...descContent.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)];
+      for (const m of imgMatches) {
+        if (isValidImgUrl(m[1])) return m[1];
+      }
     }
-
-    // 6. URL gambar di mana saja dalam block
-    const anyImgUrl = block.match(/https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|webp)(?:\?[^\s"'<>]*)?/i);
-    if (anyImgUrl?.[0] && !anyImgUrl[0].includes('pixel') && !anyImgUrl[0].includes('1x1')) return anyImgUrl[0];
 
     return '';
   };
@@ -227,7 +248,7 @@ function getTodayWIB(): string {
   return n.getUTCFullYear()+'-'+String(n.getUTCMonth()+1).padStart(2,'0')+'-'+String(n.getUTCDate()).padStart(2,'0');
 }
 
-function mapCalEvents(evs: {date?:string;isoTime?:string;impact?:string;name?:string;title?:string;forecast?:string;prev?:string;previous?:string;actual?:string;flag?:string;currency?:string;country?:string}[]): EconEvent[] {
+function mapCalEvents(evs: {date?:string;isoTime?:string;impact?:string;name?:string;title?:string;forecast?:string;prev?:string;previous?:string;actual?:string;flag?:string;currency?:string;country?:string;history?:{date:string;actual:string;forecast:string;previous:string}[]}[]): EconEvent[] {
   const DAY = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
   const ORDER = ['Sen','Sel','Rab','Kam','Jum','Sab','Min'];
   return evs
@@ -248,6 +269,7 @@ function mapCalEvents(evs: {date?:string;isoTime?:string;impact?:string;name?:st
         currency,
         title: ev.name||ev.title||'',
         country: currency,
+        history: ev.history||[],
       };
     })
     .sort((a,b) => ORDER.indexOf(a.day) - ORDER.indexOf(b.day));
@@ -286,6 +308,9 @@ export default function PageNews({
   const [calTitle, setCalTitle]     = useState('📅 Economic Calendar — Minggu Ini');
   const [expandedSpec, setExpandedSpec] = useState<Record<string,boolean>>({});
   const [expandedEvent, setExpandedEvent] = useState<number|null>(null);
+  // OG image cache — diisi dari RSS enclosure saja (OG fetch dari browser kena 403)
+  const [ogImages] = useState<Record<string,string>>({});
+  const ogFetchingRef = useRef<Set<string>>(new Set());
   const loadingRef = useRef(false);
 
   // ── Phase 14: AI hook ─────────────────────────────────────────────────────
@@ -299,12 +324,15 @@ export default function PageNews({
   // ── Phase 14: trigger AI setelah berita loaded ────────────────────────────
   const triggerAI = useCallback(async (items: NewsItem[]) => {
     if (!hasApiKey()) return items;
-    const FALLBACK_MARKER = 'Tambahkan API key';
-    const missingAnalysis = items.some(
-      n => !n.analysis || n._aiFallback || (n.speculation && n.speculation.includes(FALLBACK_MARKER))
+    // Cek apakah ada yang belum punya analisis valid (> 80 char, bukan fallback text)
+    const FALLBACK_MARKERS = ['Tambahkan API key', 'aistudio.google.com', 'Pengaturan AI', 'Gagal memuat', 'Rate limit'];
+    const needsAI = items.some(n =>
+      !n.analysis ||
+      n.analysis.length < 80 ||
+      FALLBACK_MARKERS.some(m => (n.analysis || '').includes(m))
     );
-    if (!missingAnalysis) return items;
-
+    if (!needsAI) return items;
+    // Pass copy agar tidak mutate state langsung (fix infinite loop)
     const updated = await analyzeNews([...items]);
     return updated;
   }, [hasApiKey, analyzeNews]);
@@ -709,20 +737,20 @@ export default function PageNews({
           {/* Header kolom seperti Forex Factory */}
           <div style={{
             display:'grid',
-            gridTemplateColumns:'60px 28px 1fr 68px 68px 68px 32px 28px',
-            gap:'0',padding:'6px 14px',
+            gridTemplateColumns:'80px 26px 1fr 76px 76px 76px 20px 24px',
+            gap:'0', padding:'6px 16px',
             borderBottom:'1px solid var(--border2)',
-            fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',
-            letterSpacing:'1px',textTransform:'uppercase' as const,
-            color:'var(--text3)'
+            fontFamily:"'JetBrains Mono',monospace", fontSize:'8px',
+            letterSpacing:'1px', textTransform:'uppercase' as const,
+            color:'var(--text3)',
           }}>
             <span>Waktu</span>
             <span></span>
-            <span>Event</span>
+            <span style={{paddingLeft:'4px'}}>Event</span>
             <span style={{textAlign:'right' as const}}>Actual</span>
             <span style={{textAlign:'right' as const}}>Forecast</span>
-            <span style={{textAlign:'right' as const}}>Prev</span>
-            <span style={{textAlign:'center' as const}}>●</span>
+            <span style={{textAlign:'right' as const, paddingRight:'14px'}}>Prev</span>
+            <span></span>
             <span></span>
           </div>
           <div style={{padding:'4px 0',maxHeight:'480px',overflowY:'auto' as const,scrollbarWidth:'thin' as const,scrollbarColor:'var(--gold2) transparent'}}>
@@ -732,7 +760,6 @@ export default function PageNews({
               <div style={{padding:'16px',textAlign:'center' as const,color:'var(--text3)',fontSize:'12px'}}>Tidak ada event ekonomi minggu ini</div>
             ) : events.map((ev, i) => {
               const isExpanded = expandedEvent === i;
-              // Warna actual vs forecast
               const actualNum = parseFloat((ev.actual||'').replace(/[^0-9.\-]/g,''));
               const forecastNum = parseFloat((ev.forecast||'').replace(/[^0-9.\-]/g,''));
               let actualColor = 'var(--text4)';
@@ -750,34 +777,47 @@ export default function PageNews({
                   <div
                     style={{
                       display:'grid',
-                      gridTemplateColumns:'60px 28px 1fr 68px 68px 68px 32px 28px',
+                      gridTemplateColumns:'80px 26px 1fr 76px 76px 76px 20px 24px',
                       gap:'0',
-                      padding:'9px 14px',
+                      padding:'9px 16px',
                       cursor:'pointer',
                       transition:'background 0.15s',
-                      background: isExpanded ? 'var(--bg3)' : 'transparent',
+                      background: isExpanded ? 'rgba(255,255,255,0.04)' : 'transparent',
                     }}
                     onClick={() => setExpandedEvent(isExpanded ? null : i)}
-                    onMouseEnter={e => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)'; }}
+                    onMouseEnter={e => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.025)'; }}
                     onMouseLeave={e => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                   >
-                    {/* Waktu */}
-                    <div style={{display:'flex',flexDirection:'column' as const,gap:'1px'}}>
-                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',color:'var(--text3)',letterSpacing:'0.5px'}}>{ev.day}</span>
-                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'9px',color:'var(--text2)',fontWeight:600}}>{ev.timeWIB.replace(' WIB','')}</span>
-                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'7px',color:'var(--text4)'}}>WIB</span>
+                    {/* Waktu — Hari / Jam:Menit / WIB label */}
+                    <div style={{display:'flex',flexDirection:'column' as const,gap:'2px',justifyContent:'center'}}>
+                      <span style={{
+                        fontFamily:"'JetBrains Mono',monospace",fontSize:'8.5px',
+                        color:'var(--text3)',letterSpacing:'0.5px',fontWeight:500,
+                      }}>{ev.day}</span>
+                      <span style={{
+                        fontFamily:"'JetBrains Mono',monospace",fontSize:'11px',
+                        color:'var(--gold2)',fontWeight:700,letterSpacing:'0.5px',
+                      }}>{ev.timeWIB.replace(' WIB','')}</span>
+                      <span style={{
+                        fontFamily:"'JetBrains Mono',monospace",fontSize:'7.5px',
+                        color:'var(--text4)',letterSpacing:'1px',
+                      }}>WIB</span>
                     </div>
                     {/* Flag */}
-                    <div style={{display:'flex',alignItems:'center',fontSize:'14px'}}>{ev.flag}</div>
-                    {/* Nama event */}
-                    <div style={{display:'flex',alignItems:'center',paddingRight:'8px'}}>
-                      <span style={{fontSize:'11px',color:'var(--text1)',fontWeight:500,lineHeight:'1.3'}}>{ev.name}</span>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'center',fontSize:'14px'}}>{ev.flag}</div>
+                    {/* Nama event + currency badge */}
+                    <div style={{display:'flex',alignItems:'center',gap:'6px',paddingLeft:'4px',paddingRight:'4px',overflow:'hidden'}}>
+                      <span style={{
+                        fontSize:'11px',color:'var(--text1)',fontWeight:500,
+                        lineHeight:'1.3',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const,
+                      }}>{ev.name}</span>
                       {ev.currency && (
                         <span style={{
-                          marginLeft:'6px',fontFamily:"'JetBrains Mono',monospace",fontSize:'7.5px',
-                          padding:'1px 5px',borderRadius:'3px',
-                          background:'rgba(255,255,255,0.06)',color:'var(--text3)',
                           flexShrink:0,
+                          fontFamily:"'JetBrains Mono',monospace",fontSize:'7.5px',
+                          padding:'2px 5px',borderRadius:'3px',
+                          background:'rgba(255,255,255,0.07)',color:'var(--text3)',
+                          letterSpacing:'0.5px',fontWeight:600,
                         }}>{ev.currency}</span>
                       )}
                     </div>
@@ -785,105 +825,120 @@ export default function PageNews({
                     <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end' as const}}>
                       <span style={{
                         fontFamily:"'JetBrains Mono',monospace",fontSize:'11px',
-                        fontWeight: ev.actual ? 700 : 400,
-                        color: actualColor,
-                      }}>
-                        {ev.actual || '—'}
-                      </span>
+                        fontWeight:ev.actual?700:400,color:actualColor,
+                      }}>{ev.actual||'—'}</span>
                     </div>
                     {/* Forecast */}
                     <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end' as const}}>
-                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'11px',color:'var(--gold2)',fontWeight:500}}>
-                        {ev.forecast !== '—' ? ev.forecast : <span style={{color:'var(--text4)'}}>—</span>}
-                      </span>
+                      <span style={{
+                        fontFamily:"'JetBrains Mono',monospace",fontSize:'11px',
+                        color:ev.forecast!=='—'?'var(--gold2)':'var(--text4)',fontWeight:500,
+                      }}>{ev.forecast!=='—'?ev.forecast:'—'}</span>
                     </div>
-                    {/* Prev */}
-                    <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end' as const}}>
-                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'11px',color:'var(--text3)'}}>
-                        {ev.prev !== '—' ? ev.prev : <span style={{color:'var(--text4)'}}>—</span>}
-                      </span>
+                    {/* Prev — padding kanan agar tidak tempel dot */}
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end' as const,paddingRight:'12px'}}>
+                      <span style={{
+                        fontFamily:"'JetBrains Mono',monospace",fontSize:'11px',
+                        color:ev.prev!=='—'?'var(--text3)':'var(--text4)',
+                      }}>{ev.prev!=='—'?ev.prev:'—'}</span>
                     </div>
                     {/* Impact dot */}
                     <div style={{display:'flex',alignItems:'center',justifyContent:'center' as const}}>
                       <span style={{
-                        width:'9px',height:'9px',borderRadius:'50%',display:'inline-block',
-                        background: ev.impact==='high' ? 'var(--red)' : ev.impact==='medium' ? 'var(--gold2)' : 'var(--green)',
-                        boxShadow: ev.impact==='high' ? '0 0 6px var(--red)' : 'none',
-                      }} title={ev.impact+' impact'} />
+                        width:'8px',height:'8px',borderRadius:'50%',display:'inline-block',flexShrink:0,
+                        background: ev.impact==='high'?'var(--red)':ev.impact==='medium'?'var(--gold2)':'var(--green)',
+                        boxShadow: ev.impact==='high'?'0 0 5px var(--red)':'none',
+                      }}/>
                     </div>
                     {/* Expand toggle */}
                     <div style={{display:'flex',alignItems:'center',justifyContent:'center' as const}}>
                       <span style={{
-                        fontSize:'9px',color:'var(--text4)',
-                        transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)',
-                        transition:'transform 0.2s',
-                        display:'inline-block',
+                        fontSize:'10px',color:'var(--text4)',display:'inline-block',
+                        transform:isExpanded?'rotate(180deg)':'rotate(0deg)',transition:'transform 0.2s',
                       }}>▾</span>
                     </div>
                   </div>
 
                   {/* Detail panel (expand) */}
                   {isExpanded && (
-                    <div style={{
-                      padding:'10px 14px 14px 14px',
-                      background:'var(--bg3)',
-                      borderTop:'1px solid var(--border2)',
-                    }}>
-                      {/* Stats row */}
-                      <div style={{display:'flex',gap:'0',marginBottom:'10px',borderRadius:'7px',overflow:'hidden',border:'1px solid var(--border)'}}>
+                    <div style={{padding:'12px 16px 16px',background:'rgba(0,0,0,0.25)',borderTop:'1px solid var(--border2)'}}>
+
+                      {/* Stats 3 kotak */}
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'1px',marginBottom:'12px',borderRadius:'8px',overflow:'hidden',border:'1px solid var(--border)'}}>
                         {[
-                          {label:'ACTUAL', value: ev.actual||'—', color: ev.actual ? actualColor : 'var(--text4)', highlight: !!ev.actual},
-                          {label:'FORECAST', value: ev.forecast, color:'var(--gold2)', highlight: false},
-                          {label:'PREVIOUS', value: ev.prev, color:'var(--text2)', highlight: false},
+                          {label:'ACTUAL', value:ev.actual||'—', color:ev.actual?actualColor:'var(--text4)', bg:ev.actual?'rgba(255,255,255,0.04)':'var(--bg2)'},
+                          {label:'FORECAST', value:ev.forecast!=='—'?ev.forecast:'—', color:ev.forecast!=='—'?'var(--gold2)':'var(--text4)', bg:'var(--bg2)'},
+                          {label:'PREVIOUS', value:ev.prev!=='—'?ev.prev:'—', color:ev.prev!=='—'?'var(--text2)':'var(--text4)', bg:'var(--bg2)'},
                         ].map((s,si) => (
-                          <div key={si} style={{
-                            flex:1,padding:'10px 12px',
-                            background: s.highlight ? 'rgba(0,200,100,0.06)' : 'var(--bg2)',
-                            borderRight: si<2 ? '1px solid var(--border)' : 'none',
-                            textAlign:'center' as const,
-                          }}>
-                            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'7.5px',color:'var(--text4)',letterSpacing:'1.5px',textTransform:'uppercase' as const,marginBottom:'4px'}}>{s.label}</div>
-                            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'15px',fontWeight:700,color:s.color}}>{s.value}</div>
+                          <div key={si} style={{padding:'10px 8px',background:s.bg,textAlign:'center' as const}}>
+                            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'7px',color:'var(--text4)',letterSpacing:'1.5px',textTransform:'uppercase' as const,marginBottom:'5px'}}>{s.label}</div>
+                            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'16px',fontWeight:700,color:s.color,letterSpacing:'-0.5px'}}>{s.value}</div>
                           </div>
                         ))}
                       </div>
-                      {/* Info */}
-                      <div style={{display:'flex',gap:'8px',flexWrap:'wrap' as const}}>
-                        <span style={{
-                          padding:'3px 8px',borderRadius:'4px',
-                          background:'rgba(255,255,255,0.05)',
-                          fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',
-                          color:'var(--text3)',
-                        }}>
-                          {ev.flag} {ev.currency || ev.country}
+
+                      {/* Badge info */}
+                      <div style={{display:'flex',gap:'6px',flexWrap:'wrap' as const,marginBottom: ev.history?.length ? '12px' : '0'}}>
+                        <span style={{padding:'3px 8px',borderRadius:'4px',background:'rgba(255,255,255,0.05)',fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',color:'var(--text3)'}}>
+                          {ev.flag} {ev.currency}
                         </span>
-                        <span style={{
-                          padding:'3px 8px',borderRadius:'4px',
-                          background: ev.impact==='high'?'rgba(220,50,50,0.12)':ev.impact==='medium'?'rgba(200,160,0,0.12)':'rgba(50,200,100,0.08)',
-                          fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',
-                          color: ev.impact==='high'?'var(--red)':ev.impact==='medium'?'var(--gold2)':'var(--green)',
-                        }}>
-                          {ev.impact.toUpperCase()} IMPACT
-                        </span>
-                        <span style={{
-                          padding:'3px 8px',borderRadius:'4px',
-                          background:'rgba(255,255,255,0.05)',
-                          fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',
-                          color:'var(--text3)',
-                        }}>
+                        <span style={{padding:'3px 8px',borderRadius:'4px',fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',
+                          background:ev.impact==='high'?'rgba(220,50,50,0.12)':ev.impact==='medium'?'rgba(200,160,0,0.12)':'rgba(50,200,100,0.08)',
+                          color:ev.impact==='high'?'var(--red)':ev.impact==='medium'?'var(--gold2)':'var(--green)',
+                        }}>{ev.impact.toUpperCase()} IMPACT</span>
+                        <span style={{padding:'3px 8px',borderRadius:'4px',background:'rgba(255,255,255,0.05)',fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',color:'var(--text3)'}}>
                           ⏰ {ev.timeWIB}
                         </span>
                         {ev.actual && !isNaN(actualNum) && !isNaN(forecastNum) && (
                           <span style={{
-                            padding:'3px 8px',borderRadius:'4px',
-                            background: actualNum > forecastNum ? 'rgba(50,200,100,0.12)' : 'rgba(220,50,50,0.12)',
-                            fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',
-                            color: actualNum > forecastNum ? 'var(--green)' : 'var(--red)',
+                            padding:'3px 8px',borderRadius:'4px',fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',
+                            background:actualNum>forecastNum?'rgba(50,200,100,0.12)':'rgba(220,50,50,0.12)',
+                            color:actualNum>forecastNum?'var(--green)':'var(--red)',
                           }}>
-                            {actualNum > forecastNum ? '▲ Better Than Expected' : '▼ Worse Than Expected'}
+                            {actualNum>forecastNum?'▲ Better Than Expected':'▼ Worse Than Expected'}
                           </span>
                         )}
                       </div>
+
+                      {/* History 5 bulan terakhir */}
+                      {ev.history && ev.history.length > 0 && (
+                        <div style={{marginTop:'2px'}}>
+                          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',letterSpacing:'1.5px',textTransform:'uppercase' as const,color:'var(--text4)',marginBottom:'6px'}}>
+                            📅 History ({ev.history.length} rilis sebelumnya)
+                          </div>
+                          <div style={{borderRadius:'6px',overflow:'hidden',border:'1px solid var(--border2)'}}>
+                            {/* History header */}
+                            <div style={{display:'grid',gridTemplateColumns:'1fr 80px 80px 80px',gap:'0',padding:'5px 10px',background:'rgba(255,255,255,0.03)',borderBottom:'1px solid var(--border2)'}}>
+                              {['Tanggal','Actual','Forecast','Previous'].map(h => (
+                                <span key={h} style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'7.5px',color:'var(--text4)',letterSpacing:'1px',textAlign:h!=='Tanggal'?'right' as const:'left' as const}}>{h}</span>
+                              ))}
+                            </div>
+                            {/* History rows */}
+                            {ev.history.map((h, hi) => {
+                              const hActualNum = parseFloat((h.actual||'').replace(/[^0-9.\-]/g,''));
+                              const hForecastNum = parseFloat((h.forecast||'').replace(/[^0-9.\-]/g,''));
+                              let hColor = 'var(--text2)';
+                              if (h.actual && h.actual!=='—' && !isNaN(hActualNum) && !isNaN(hForecastNum)) {
+                                hColor = hActualNum>hForecastNum?'var(--green)':hActualNum<hForecastNum?'var(--red)':'var(--text2)';
+                              }
+                              return (
+                                <div key={hi} style={{
+                                  display:'grid',gridTemplateColumns:'1fr 80px 80px 80px',gap:'0',
+                                  padding:'6px 10px',
+                                  borderBottom:hi<(ev.history!.length-1)?'1px solid var(--border2)':'none',
+                                  background:hi%2===0?'transparent':'rgba(255,255,255,0.015)',
+                                }}>
+                                  <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'9px',color:'var(--text3)'}}>{h.date}</span>
+                                  <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'9px',color:hColor,fontWeight:600,textAlign:'right' as const}}>{h.actual||'—'}</span>
+                                  <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'9px',color:'var(--gold2)',textAlign:'right' as const}}>{h.forecast||'—'}</span>
+                                  <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'9px',color:'var(--text4)',textAlign:'right' as const}}>{h.previous||'—'}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                     </div>
                   )}
                 </div>
@@ -971,14 +1026,34 @@ export default function PageNews({
                       ⚠ Data Contoh — RSS Gagal Dimuat
                     </div>
                   )}
-                  {n.thumbnail ? (
+                  {n.thumbnail || ogImages[n.url] ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={n.thumbnail} alt="" className="news-card-img" loading="lazy"
-                      onError={e => { (e.currentTarget as HTMLImageElement).style.display='none'; }}
+                      src={n.thumbnail || ogImages[n.url]} alt=""
+                      className="news-card-img" loading="lazy"
+                      onError={e => {
+                        const el = e.currentTarget as HTMLImageElement;
+                        if (n.thumbnail && ogImages[n.url] && el.src !== ogImages[n.url]) {
+                          el.src = ogImages[n.url];
+                        } else {
+                          el.style.display = 'none';
+                          const ph = el.parentElement?.querySelector('.news-card-img-placeholder') as HTMLElement|null;
+                          if (ph) ph.style.display = 'flex';
+                        }
+                      }}
                     />
-                  ) : (
-                    <div className="news-card-img-placeholder">{n.emoji||'📰'}</div>
+                  ) : null}
+                  {/* Placeholder hanya muncul jika tidak ada thumbnail */}
+                  {!n.thumbnail && !ogImages[n.url] && (
+                    <div className="news-card-img-placeholder">
+                      {n.emoji || '📰'}
+                    </div>
+                  )}
+                  {/* Hidden placeholder untuk fallback ketika img gagal load */}
+                  {(n.thumbnail || ogImages[n.url]) && (
+                    <div className="news-card-img-placeholder" style={{display:'none'}}>
+                      {n.emoji || '📰'}
+                    </div>
                   )}
                   <div className="news-card-body">
                     <div className="news-card-meta">

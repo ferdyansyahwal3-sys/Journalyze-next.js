@@ -10,6 +10,7 @@ import {
   getTipeAkun,
   idrToDisp,
   fmtDispCur,
+  RATES_CACHE_KEY,
   type Currency,
 } from '@/lib/riskCalc';
 
@@ -58,6 +59,19 @@ function getRiskState(): RiskState {
   } catch { return DEFAULTS; }
 }
 
+// Baca kurs terbaru dari localStorage cache (diisi oleh useRates)
+function readKursFromCache(): { usdIdr: number; jpyIdr: number } {
+  try {
+    const cached = JSON.parse(localStorage.getItem(RATES_CACHE_KEY) || 'null');
+    return {
+      usdIdr: cached?.USD_IDR || liveRates.USD_IDR || 16462,
+      jpyIdr: cached?.JPY_IDR || liveRates.JPY_IDR || 108,
+    };
+  } catch {
+    return { usdIdr: liveRates.USD_IDR || 16462, jpyIdr: liveRates.JPY_IDR || 108 };
+  }
+}
+
 export default function PagePlan({
   active,
   switchPage,
@@ -65,23 +79,45 @@ export default function PagePlan({
   active: boolean;
   switchPage: (page: string) => void;
 }) {
-  // ── FIX HYDRATION: mulai dengan DEFAULTS (sama di server & client),
-  //    baru setelah mount baca localStorage ──
   const [rs, setRs] = useState<RiskState>(DEFAULTS);
   const [mounted, setMounted] = useState(false);
+  // ── Kurs sebagai React state supaya useMemo reaktif terhadap perubahan kurs ──
+  const [usdIdr, setUsdIdr] = useState(16462);
+  const [jpyIdr, setJpyIdr] = useState(108);
 
   useEffect(() => {
     setMounted(true);
     setRs(getRiskState());
+    // Baca kurs awal dari cache
+    const k = readKursFromCache();
+    setUsdIdr(k.usdIdr);
+    setJpyIdr(k.jpyIdr);
   }, []);
 
-  // Re-read setiap kali tab diaktifkan
+  // Re-read setiap kali tab diaktifkan — juga refresh kurs
   useEffect(() => {
-    if (active && mounted) setRs(getRiskState());
+    if (active && mounted) {
+      setRs(getRiskState());
+      const k = readKursFromCache();
+      setUsdIdr(k.usdIdr);
+      setJpyIdr(k.jpyIdr);
+    }
   }, [active, mounted]);
 
+  // Polling kurs setiap 30 detik supaya update kalau useRates di tab lain baru fetch
+  useEffect(() => {
+    if (!mounted) return;
+    const interval = setInterval(() => {
+      const k = readKursFromCache();
+      setUsdIdr(prev => k.usdIdr !== prev ? k.usdIdr : prev);
+      setJpyIdr(prev => k.jpyIdr !== prev ? k.jpyIdr : prev);
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [mounted]);
+
   const { balance, target, pair, currency, risk, months, leverage } = rs;
-  const kurs = liveRates.USD_IDR || 16462;
+  // kurs alias untuk backward compat di bagian render
+  const kurs = usdIdr;
 
   const toDisp = (idr: number) => idrToDisp(idr, currency);
   const fmtDisp = (v: number) => fmtDispCur(v, currency);
@@ -100,35 +136,62 @@ export default function PagePlan({
   const tipeAkun = getTipeAkun(toDisp(balance), currency);
   const marginIDR = calcMarginIDR(pair, leverage, kurs);
 
-  const PIPVAL_IDR = pair === 'XAUUSD'
-    ? ((liveRates.XAU_USD || 2350) / 100) * kurs * 0.0001 * 100
-    : kurs * 0.01;
-
   const balCur = toDisp(balance);
   const tgtCur = toDisp(target);
   const progPct = hasData ? Math.min(100, Math.max(0, (balCur / tgtCur) * 100)) : 0;
 
+  // ── Pip value per 1 lot penuh dalam satuan display (untuk kalkulasi tabel) ──
+  // Referensi: 1 lot standar Forex
+  //   XAUUSD / GBPUSD / EURUSD : $10/pip/lot → IDR: ×usdIdr | CENT: 1000¢ | USD: $10
+  //   USDJPY                    : ¥1000/pip/lot → IDR: ×jpyIdr | CENT: (¥→$→¢) | USD: ÷usdIdr×jpyIdr
+  //   BTCUSD                    : $1/pip/lot → IDR: ×usdIdr | CENT: 100¢ | USD: $1
+  const pipValPer1LotDisp = useMemo(() => {
+    if (currency === 'CENT') {
+      if (pair === 'USDJPY') return (jpyIdr / usdIdr) * 1000 * 100; // ¥1000/lot → $→¢
+      if (pair === 'BTCUSD') return 100;  // $1/pip/lot → 100¢
+      return 1000;                         // $10/pip/lot → 1000¢
+    }
+    if (currency === 'USD') {
+      if (pair === 'USDJPY') return (jpyIdr * 1000) / usdIdr; // $/pip/lot
+      if (pair === 'BTCUSD') return 1;
+      return 10;
+    }
+    // IDR
+    if (pair === 'USDJPY') return jpyIdr * 1000;
+    // BTCUSD CFD di MT5: pip value = $10/pip/lot (sama dengan major forex)
+    if (pair === 'BTCUSD') return 10 * usdIdr;
+    return 10 * usdIdr;
+  }, [pair, currency, usdIdr, jpyIdr]);
+
+  // Pip value per 0.01 lot dalam satuan display (untuk keterangan)
+  const PIPVAL_DISP = pipValPer1LotDisp * 0.01;
+
   const planRows = useMemo<PlanRow[]>(() => {
-    if (!hasData) return [];
+    if (!hasData || pipValPer1LotDisp <= 0) return [];
     const rows: PlanRow[] = [];
     let bal = balance;
+
     for (let day = 1; day <= totalDays; day++) {
       const dt = Math.round(bal * dg);
       const balDispVal = toDisp(bal);
       const lot = getLotByBal(currency === 'CENT' ? balDispVal : bal, currency);
       const dtDispRaw = toDisp(dt);
 
-      let pips = lot > 0 ? Math.ceil(dtDispRaw / (lot * 10)) : 0;
-      let pFix = Math.ceil(pips / 10) * 10;
+      // pips = target profit harian ÷ (pip value per lot × jumlah lot)
+      const pipValForLot = pipValPer1LotDisp * lot;
+      let pips = pipValForLot > 0 ? Math.ceil(dtDispRaw / pipValForLot) : 0;
+      // pFix = pips dibulatkan ke atas saja (bukan ke puluhan)
+      let pFix = pips;
+      // trd = berapa trade dibutuhkan jika max 40 pip/trade, min 1x
       let trd = Math.max(1, Math.ceil(pFix / 40));
       let lotAdj = lot;
 
       if (currency === 'CENT' && trd > 8) {
-        const lotMin = Math.ceil((dtDispRaw / (320 * 10)) * 100) / 100;
+        const lotMin = Math.ceil((dtDispRaw / (320 * pipValPer1LotDisp)) * 100) / 100;
         lotAdj = Math.max(lot, Math.round(lotMin * 100) / 100);
         if (lotAdj > 0) {
-          const pipsAdj = Math.ceil(dtDispRaw / (lotAdj * 10));
-          pFix = Math.ceil(pipsAdj / 10) * 10;
+          const pipsAdj = Math.ceil(dtDispRaw / (pipValPer1LotDisp * lotAdj));
+          pFix = pipsAdj;
           pips = pipsAdj;
         }
         trd = Math.max(1, Math.ceil(pFix / 40));
@@ -154,7 +217,7 @@ export default function PagePlan({
     }
     return rows;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [balance, target, months, currency, pair, leverage, kurs, mounted]);
+  }, [balance, target, months, currency, pair, leverage, usdIdr, jpyIdr, mounted, pipValPer1LotDisp]);
 
   const batasanRows = useMemo<BatasanRow[]>(() => {
     if (!hasData) return [];
@@ -172,13 +235,18 @@ export default function PagePlan({
       { l: '📏 Disiplin Lot', v: 'Jangan nambah lot saat rugi', n: 'Ikuti tabel Trading Plan', c: '' },
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [balance, target, months, risk, currency, kurs, mounted]);
+  }, [balance, target, months, risk, currency, usdIdr, jpyIdr, mounted]);
 
   const pipValDisp = (() => {
-    const r = Math.round(PIPVAL_IDR);
-    if (currency === 'CENT') return ((PIPVAL_IDR / kurs) * 100).toFixed(2) + '¢ per 0.01 lot (~Rp ' + r.toLocaleString('id-ID') + ' IDR)';
-    if (currency === 'USD') return '$' + (PIPVAL_IDR / kurs).toFixed(4) + ' per 0.01 lot (~Rp ' + r.toLocaleString('id-ID') + ' IDR)';
-    return 'Rp ' + r.toLocaleString('id-ID') + ' per 0.01 lot';
+    if (currency === 'CENT') {
+      const idrEquiv = Math.round(PIPVAL_DISP / 100 * kurs);
+      return PIPVAL_DISP.toFixed(2) + '¢ per 0.01 lot (~Rp ' + idrEquiv.toLocaleString('id-ID') + ')';
+    }
+    if (currency === 'USD') {
+      const idrEquiv = Math.round(PIPVAL_DISP * kurs);
+      return '$' + PIPVAL_DISP.toFixed(4) + ' per 0.01 lot (~Rp ' + idrEquiv.toLocaleString('id-ID') + ')';
+    }
+    return 'Rp ' + Math.round(PIPVAL_DISP).toLocaleString('id-ID') + ' per 0.01 lot';
   })();
 
   return (
@@ -286,6 +354,7 @@ export default function PagePlan({
                 <tr><td className="lbl"><span>🔁</span>Total Trade Estimasi</td><td className="val">{hasData ? (totalDays * 2) + ' trade (est.)' : '—'}</td></tr>
                 <tr><td className="lbl"><span>🏦</span>Tipe Akun</td><td className="val">{hasData ? tipeAkun : '—'}</td></tr>
                 <tr><td className="lbl"><span>💱</span>Mata Uang Jurnal</td><td className="val">{currency}</td></tr>
+                <tr><td className="lbl"><span>💵</span>Kurs USD/IDR</td><td className="val">{usdIdr.toLocaleString('id-ID')}</td></tr>
               </tbody>
             </table>
           </div>

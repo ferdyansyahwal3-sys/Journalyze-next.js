@@ -331,7 +331,7 @@ export default function PagePlan({
                   <td>{r.trd}x</td>
                   <td>{r.pips.toLocaleString('id-ID')}</td>
                   <td>{r.pFix}</td>
-                  <td style={{ color: 'var(--blue)', fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', textAlign: 'right' }}>{r.marginLotDisp}</td>
+                  <td className="margin">{r.marginLotDisp}</td>
                   <td className="exp">{r.expDisp}</td>
                 </tr>
               ))

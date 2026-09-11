@@ -3,7 +3,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { liveRates, calcDailyGrowth, getLotByBal, idrToDisp, fmtDispCur, RATES_CACHE_KEY, type Currency } from '@/lib/riskCalc';
+import { liveRates, calcDailyGrowth, getLotByBal, calcMarginIDR, idrToDisp, fmtDispCur, RATES_CACHE_KEY, type Currency } from '@/lib/riskCalc';
 
 function usePlanSummary() {
   const [data, setData] = useState<{
@@ -13,7 +13,8 @@ function usePlanSummary() {
     dgPct: string; totalDays: number;
     pipValDisp: string; pipValLotDisp: string;
     pipsDay1: number; trdPerDay: number;
-    lotDay1: number; targetHarianDisp: string; valid: boolean;
+    lotDay1: number; targetHarianDisp: string;
+    marginPerTradeDisp: string; valid: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -69,6 +70,15 @@ function usePlanSummary() {
         return 'Rp ' + Math.round(v).toLocaleString('id-ID');
       })();
 
+      // Margin per trade (per lot yang dipakai)
+      const marginIDR = calcMarginIDR(pair, leverage, usdIdr);
+      const marginPerLotIDR = marginIDR * (lot / 0.01);
+      const marginPerTradeStr = (() => {
+        if (currency === 'CENT') return ((marginPerLotIDR / usdIdr) * 100).toFixed(2) + '¢';
+        if (currency === 'USD') return '$' + (marginPerLotIDR / usdIdr).toFixed(2);
+        return 'Rp ' + Math.round(marginPerLotIDR).toLocaleString('id-ID');
+      })();
+
       setData({
         pair, currency, balance, target, months, leverage,
         balanceDisp: fmt(toDisp(balance)),
@@ -81,6 +91,7 @@ function usePlanSummary() {
         trdPerDay: trd,
         lotDay1: lot,
         targetHarianDisp: fmt(dtDisp),
+        marginPerTradeDisp: marginPerTradeStr,
         valid: true,
       });
     } catch { /* silent */ }
@@ -420,9 +431,13 @@ export default function PageHome({
                   <br /><br />
 
                   <strong>💳 Kolom MARGIN/TRADE</strong><br />
-                  Estimasi margin yang dikunci broker per trade dengan leverage{' '}
-                  <strong>1:{plan.leverage}</strong>. Pastikan saldo kamu cukup untuk menanggung
-                  margin ini, terutama kalau buka beberapa trade sekaligus.
+                  Saat kamu buka posisi, broker "mengunci" sebagian saldo kamu sebagai jaminan — ini namanya margin.
+                  Dengan leverage <strong>1:{plan.leverage}</strong>, margin per trade untuk{' '}
+                  <strong>{plan.lotDay1.toFixed(2)} lot</strong> sekitar{' '}
+                  <strong style={{ color: 'var(--blue)' }}>{plan.marginPerTradeDisp}</strong>.
+                  Kalau TRD = 2x berarti 2 posisi buka bersamaan, total margin terkunci = 2× angka itu.
+                  Pastikan saldo kamu masih jauh di atas total margin agar tidak kena <em>margin call</em>.
+                  Uang ini kembali otomatis saat posisi ditutup.
                   <br /><br />
 
                   <strong>✅ Kolom EXPECTED SALDO</strong><br />

@@ -289,6 +289,147 @@ function readLS(key: string): string {
   return localStorage.getItem(key) || '';
 }
 
+// ── SVG Placeholder Opsi A — dark theme, ilustrasi per kategori ──────────────
+const PLACEHOLDER_CONFIG: Record<string, {
+  bg1: string; bg2: string; accent: string; accent2: string; label: string;
+}> = {
+  gold:     { bg1:'#1c1608', bg2:'#2e2308', accent:'#c8960a', accent2:'#8a6500', label:'GOLD · XAUUSD' },
+  crypto:   { bg1:'#0c0c1a', bg2:'#141428', accent:'#6366f1', accent2:'#3730a3', label:'CRYPTO' },
+  fed:      { bg1:'#091409', bg2:'#0f220f', accent:'#4ade80', accent2:'#166534', label:'FED · USD' },
+  economic: { bg1:'#180a0a', bg2:'#2a1010', accent:'#f87171', accent2:'#991b1b', label:'EKONOMI' },
+  forex:    { bg1:'#090d1c', bg2:'#0f1630', accent:'#60a5fa', accent2:'#1e3a8a', label:'FOREX' },
+};
+
+function getPlaceholderSVG(category: string, pair?: string): string {
+  const c = PLACEHOLDER_CONFIG[category] || PLACEHOLDER_CONFIG.forex;
+  const label = pair || c.label;
+  const uid = category + (pair||'').replace(/\W/g,'');
+
+  // Ilustrasi per kategori — path SVG sederhana
+  const illustrations: Record<string, string> = {
+    gold: `
+      <!-- Lingkaran besar — koin emas -->
+      <circle cx="220" cy="95" r="58" fill="${c.accent2}" opacity="0.18"/>
+      <circle cx="220" cy="95" r="50" fill="none" stroke="${c.accent}" stroke-width="1.5" opacity="0.3"/>
+      <circle cx="220" cy="95" r="42" fill="none" stroke="${c.accent}" stroke-width="0.5" opacity="0.2"/>
+      <!-- Teks di koin -->
+      <text x="220" y="91" text-anchor="middle" font-family="Georgia,serif" font-size="13" fill="${c.accent}" opacity="0.35" font-weight="bold">XAU</text>
+      <text x="220" y="107" text-anchor="middle" font-family="monospace" font-size="8" fill="${c.accent}" opacity="0.25" letter-spacing="2">GOLD</text>
+      <!-- Bar chart kiri -->
+      <rect x="30" y="130" width="10" height="40" rx="2" fill="${c.accent}" opacity="0.2"/>
+      <rect x="46" y="110" width="10" height="60" rx="2" fill="${c.accent}" opacity="0.25"/>
+      <rect x="62" y="120" width="10" height="50" rx="2" fill="${c.accent}" opacity="0.2"/>
+      <rect x="78" y="95"  width="10" height="75" rx="2" fill="${c.accent}" opacity="0.3"/>
+      <rect x="94" y="115" width="10" height="55" rx="2" fill="${c.accent}" opacity="0.22"/>
+      <!-- Trend line -->
+      <polyline points="30,145 55,120 80,108 110,95 145,100" fill="none" stroke="${c.accent}" stroke-width="1.5" opacity="0.4" stroke-linecap="round" stroke-linejoin="round"/>
+    `,
+    crypto: `
+      <!-- Hexagon background -->
+      <polygon points="200,40 245,65 245,115 200,140 155,115 155,65" fill="${c.accent2}" opacity="0.12" stroke="${c.accent}" stroke-width="1" opacity="0.2"/>
+      <!-- B symbol -->
+      <text x="200" y="105" text-anchor="middle" font-family="monospace" font-size="42" fill="${c.accent}" opacity="0.2" font-weight="bold">₿</text>
+      <!-- Circuit lines -->
+      <line x1="40" y1="80"  x2="140" y2="80"  stroke="${c.accent}" stroke-width="0.8" opacity="0.15"/>
+      <line x1="40" y1="100" x2="140" y2="100" stroke="${c.accent}" stroke-width="0.8" opacity="0.15"/>
+      <line x1="40" y1="120" x2="140" y2="120" stroke="${c.accent}" stroke-width="0.8" opacity="0.15"/>
+      <line x1="60"  y1="60" x2="60"  y2="160" stroke="${c.accent}" stroke-width="0.8" opacity="0.1"/>
+      <line x1="100" y1="60" x2="100" y2="160" stroke="${c.accent}" stroke-width="0.8" opacity="0.1"/>
+      <!-- Nodes -->
+      <circle cx="60"  cy="80"  r="3" fill="${c.accent}" opacity="0.3"/>
+      <circle cx="100" cy="100" r="3" fill="${c.accent}" opacity="0.3"/>
+      <circle cx="60"  cy="120" r="3" fill="${c.accent}" opacity="0.3"/>
+      <circle cx="100" cy="80"  r="2" fill="${c.accent}" opacity="0.2"/>
+    `,
+    fed: `
+      <!-- Kolom bank -->
+      <rect x="150" y="120" width="140" height="50" rx="2" fill="${c.accent2}" opacity="0.15"/>
+      <rect x="155" y="75"  width="8"  height="48" rx="1" fill="${c.accent}" opacity="0.25"/>
+      <rect x="172" y="65"  width="8"  height="58" rx="1" fill="${c.accent}" opacity="0.2"/>
+      <rect x="189" y="70"  width="8"  height="53" rx="1" fill="${c.accent}" opacity="0.25"/>
+      <rect x="206" y="60"  width="8"  height="63" rx="1" fill="${c.accent}" opacity="0.2"/>
+      <rect x="223" y="72"  width="8"  height="51" rx="1" fill="${c.accent}" opacity="0.25"/>
+      <rect x="240" y="68"  width="8"  height="55" rx="1" fill="${c.accent}" opacity="0.2"/>
+      <rect x="257" y="75"  width="8"  height="48" rx="1" fill="${c.accent}" opacity="0.25"/>
+      <!-- Pediment -->
+      <polygon points="148,122 220,52 292,122" fill="${c.accent2}" opacity="0.2" stroke="${c.accent}" stroke-width="0.8" opacity="0.2"/>
+      <!-- USD label -->
+      <text x="220" y="145" text-anchor="middle" font-family="monospace" font-size="10" fill="${c.accent}" opacity="0.3" letter-spacing="3">USD</text>
+      <!-- Trend line kiri -->
+      <polyline points="30,150 60,130 90,110 120,120 145,105" fill="none" stroke="${c.accent}" stroke-width="1.5" opacity="0.35" stroke-linecap="round"/>
+    `,
+    economic: `
+      <!-- Pie chart / donut -->
+      <circle cx="215" cy="95" r="55" fill="none" stroke="${c.accent2}" stroke-width="20" stroke-dasharray="140 220" opacity="0.25"/>
+      <circle cx="215" cy="95" r="55" fill="none" stroke="${c.accent}" stroke-width="20" stroke-dasharray="90 220" stroke-dashoffset="-140" opacity="0.2"/>
+      <circle cx="215" cy="95" r="38" fill="${c.bg2}" opacity="0.8"/>
+      <text x="215" y="99" text-anchor="middle" font-family="monospace" font-size="10" fill="${c.accent}" opacity="0.4" letter-spacing="1">GDP</text>
+      <!-- Bar chart kiri -->
+      <rect x="30" y="140" width="12" height="30" rx="2" fill="${c.accent2}" opacity="0.3"/>
+      <rect x="50" y="115" width="12" height="55" rx="2" fill="${c.accent}"  opacity="0.25"/>
+      <rect x="70" y="125" width="12" height="45" rx="2" fill="${c.accent2}" opacity="0.3"/>
+      <rect x="90" y="100" width="12" height="70" rx="2" fill="${c.accent}"  opacity="0.3"/>
+      <rect x="110"y="110" width="12" height="60" rx="2" fill="${c.accent2}" opacity="0.25"/>
+    `,
+    forex: `
+      <!-- Globe / circle chart -->
+      <circle cx="218" cy="95" r="60" fill="none" stroke="${c.accent}" stroke-width="0.8" opacity="0.15"/>
+      <circle cx="218" cy="95" r="45" fill="none" stroke="${c.accent}" stroke-width="0.5" opacity="0.1"/>
+      <ellipse cx="218" cy="95" rx="25" ry="60" fill="none" stroke="${c.accent}" stroke-width="0.8" opacity="0.12"/>
+      <line x1="158" y1="95" x2="278" y2="95" stroke="${c.accent}" stroke-width="0.8" opacity="0.15"/>
+      <!-- Candlestick chart kiri -->
+      ${[0,1,2,3,4,5].map(i => {
+        const x = 28 + i*18;
+        const h = [45,62,38,72,55,48][i];
+        const y = 170 - h;
+        const bull = i%2===0;
+        const col = bull ? c.accent : c.accent2;
+        return `<line x1="${x+4}" y1="${y-8}" x2="${x+4}" y2="${y+h+8}" stroke="${col}" stroke-width="1" opacity="0.3"/>
+                <rect x="${x}" y="${y}" width="8" height="${h}" rx="1" fill="${col}" opacity="${bull?'0.35':'0.25'}"/>`;
+      }).join('')}
+      <!-- Pair labels -->
+      <text x="218" y="88" text-anchor="middle" font-family="monospace" font-size="9" fill="${c.accent}" opacity="0.25" letter-spacing="1">EUR/USD</text>
+      <text x="218" y="103" text-anchor="middle" font-family="monospace" font-size="7" fill="${c.accent}" opacity="0.18" letter-spacing="1">GBP · JPY · AUD</text>
+    `,
+  };
+
+  const illust = illustrations[category] || illustrations.forex;
+
+  return `<svg viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" style="display:block">
+    <defs>
+      <radialGradient id="rg_${uid}" cx="65%" cy="40%" r="65%">
+        <stop offset="0%"   stop-color="${c.bg2}"/>
+        <stop offset="100%" stop-color="${c.bg1}"/>
+      </radialGradient>
+      <linearGradient id="fade_${uid}" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%"   stop-color="${c.bg1}" stop-opacity="0"/>
+        <stop offset="30%"  stop-color="${c.bg1}" stop-opacity="0.85"/>
+        <stop offset="100%" stop-color="${c.bg1}" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+
+    <!-- Background -->
+    <rect width="320" height="200" fill="url(#rg_${uid})"/>
+
+    <!-- Orange accent circle kiri bawah — mirip gaya editorial FXStreet -->
+    <circle cx="55" cy="168" r="45" fill="${c.accent}" opacity="0.08"/>
+    <circle cx="55" cy="168" r="28" fill="${c.accent}" opacity="0.06"/>
+
+    <!-- Ilustrasi per kategori -->
+    ${illust}
+
+    <!-- Fade overlay tengah agar text readable -->
+    <rect x="0" y="0" width="320" height="200" fill="url(#fade_${uid})" opacity="0.3"/>
+
+    <!-- Label kategori + pair — pojok kiri atas -->
+    <rect x="10" y="10" width="${label.length * 6.8 + 14}" height="17" rx="3" fill="${c.accent}" opacity="0.15"/>
+    <text x="17" y="21.5" font-family="monospace" font-size="7.5" fill="${c.accent}" opacity="0.9" letter-spacing="1.2" font-weight="bold">${label}</text>
+
+    <!-- Garis dekoratif bawah -->
+    <line x1="10" y1="186" x2="310" y2="186" stroke="${c.accent}" stroke-width="0.5" opacity="0.2"/>
+  </svg>`;
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function PageNews({
   active,
@@ -308,9 +449,18 @@ export default function PageNews({
   const [calTitle, setCalTitle]     = useState('📅 Economic Calendar — Minggu Ini');
   const [expandedSpec, setExpandedSpec] = useState<Record<string,boolean>>({});
   const [expandedEvent, setExpandedEvent] = useState<number|null>(null);
-  // OG image cache — diisi dari RSS enclosure saja (OG fetch dari browser kena 403)
+  // OG image cache — tidak dipakai lagi (selalu 403)
   const [ogImages] = useState<Record<string,string>>({});
   const ogFetchingRef = useRef<Set<string>>(new Set());
+
+  // Unsplash image cache — key: article id, value: image URL
+  const [unsplashImages, setUnsplashImages] = useState<Record<string,string>>({});
+  const unsplashFetchingRef = useRef<Set<string>>(new Set());
+
+  // Ambil Unsplash key dari localStorage
+  const getUnsplashKey = useCallback(() => {
+    return typeof window !== 'undefined' ? localStorage.getItem('jz_unsplash_key') || '' : '';
+  }, []);
   const loadingRef = useRef(false);
 
   // ── Phase 14: AI hook ─────────────────────────────────────────────────────
@@ -320,6 +470,42 @@ export default function PageNews({
   const hasApiKey = useCallback(() => {
     return !!(readLS('jz_gemini_key') || readLS('jz_anthropic_key'));
   }, []);
+
+  // ── Lazy-fetch Unsplash untuk artikel tanpa thumbnail ─────────────────────
+  const fetchUnsplashImages = useCallback(async (items: NewsItem[]) => {
+    const key = getUnsplashKey();
+    if (!key) return; // skip jika tidak ada key
+
+    const missing = items.filter(n =>
+      !n.thumbnail &&
+      !unsplashImages[n.id] &&
+      !unsplashFetchingRef.current.has(n.id)
+    );
+    if (!missing.length) return;
+
+    // Prioritas high impact, max 12 parallel
+    const sorted = [...missing].sort((a, b) => {
+      const rank: Record<string,number> = { high:0, medium:1, low:2 };
+      return (rank[a.impact]??3) - (rank[b.impact]??3);
+    });
+    const batch = sorted.slice(0, 12);
+
+    await Promise.allSettled(batch.map(async (n) => {
+      unsplashFetchingRef.current.add(n.id);
+      try {
+        const res = await fetch(
+          `/api/unsplash-proxy?title=${encodeURIComponent(n.title)}&category=${n.category}&key=${encodeURIComponent(key)}`,
+          { signal: AbortSignal.timeout(8000) }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (data.url) {
+            setUnsplashImages(prev => ({ ...prev, [n.id]: data.url }));
+          }
+        }
+      } catch { /* silent */ }
+    }));
+  }, [getUnsplashKey, unsplashImages]);
 
   // ── Phase 14: trigger AI setelah berita loaded ────────────────────────────
   const triggerAI = useCallback(async (items: NewsItem[]) => {
@@ -384,20 +570,22 @@ export default function PageNews({
             (n: NewsItem) => !n.analysis || n._aiFallback || (n.speculation && n.speculation.includes(FALLBACK_MARKER))
           );
           if (needsAI) {
-            // Reset field yang perlu di-analyze ulang (identik dengan source)
-            c.items.forEach((n: NewsItem) => {
-              if (!n.analysis || n._aiFallback || (n.speculation && n.speculation.includes(FALLBACK_MARKER))) {
-                n.analysis = ''; n.speculation = ''; n._aiFallback = false;
-              }
-            });
-            const updated = await triggerAI(c.items);
-            localStorage.setItem(NEWS_CACHE_KEY, JSON.stringify({ts: c.ts, items: updated}));
-            setAllData([...updated]);
+            // Tampilkan berita dulu tanpa AI (progressive loading)
+            setAllData([...c.items]);
+            setState('ok');
+            setLastFetch(c.ts);
+            fetchUnsplashImages(c.items);
+            // AI jalan di background — update saat selesai
+            triggerAI(c.items).then(updated => {
+              localStorage.setItem(NEWS_CACHE_KEY, JSON.stringify({ts: c.ts, items: updated}));
+              setAllData([...updated]);
+            }).catch(() => {});
           } else {
             setAllData(c.items);
+            setLastFetch(c.ts);
+            setState('ok');
+            fetchUnsplashImages(c.items);
           }
-          setLastFetch(c.ts);
-          setState('ok');
           return;
         }
       } catch { /* ignore */ }
@@ -420,19 +608,24 @@ export default function PageNews({
         return new Date(b.time).getTime() - new Date(a.time).getTime();
       });
 
-      // Phase 14: analyze dengan AI setelah fetch
-      const analyzed = await triggerAI(items);
+      // Tampilkan berita langsung dulu (tanpa AI)
       const ts = Date.now();
-      localStorage.setItem(NEWS_CACHE_KEY, JSON.stringify({ts, items: analyzed}));
-      setAllData([...analyzed]);
-      setLastFetch(ts);
+      setAllData([...items]);
       setState('ok');
+      setLastFetch(ts);
+      fetchUnsplashImages(items);
+
+      // AI jalan di background — update saat selesai
+      triggerAI(items).then(analyzed => {
+        localStorage.setItem(NEWS_CACHE_KEY, JSON.stringify({ts, items: analyzed}));
+        setAllData([...analyzed]);
+      }).catch(() => {});
     } catch {
       setState('ok');
     } finally {
       loadingRef.current = false;
     }
-  }, [fetchRSS, hasApiKey, triggerAI]);
+  }, [fetchRSS, hasApiKey, triggerAI, fetchUnsplashImages]);
 
   // ── Load calendar — identik dengan loadEconomicCalendar ──────────────────
   const loadCalendar = useCallback(async () => {
@@ -1026,15 +1219,16 @@ export default function PageNews({
                       ⚠ Data Contoh — RSS Gagal Dimuat
                     </div>
                   )}
-                  {n.thumbnail || ogImages[n.url] ? (
+                  {n.thumbnail || ogImages[n.url] || unsplashImages[n.id] ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={n.thumbnail || ogImages[n.url]} alt=""
+                      src={n.thumbnail || ogImages[n.url] || unsplashImages[n.id]} alt=""
                       className="news-card-img" loading="lazy"
                       onError={e => {
                         const el = e.currentTarget as HTMLImageElement;
-                        if (n.thumbnail && ogImages[n.url] && el.src !== ogImages[n.url]) {
-                          el.src = ogImages[n.url];
+                        // Coba unsplash jika thumbnail RSS gagal
+                        if ((n.thumbnail || ogImages[n.url]) && unsplashImages[n.id] && el.src !== unsplashImages[n.id]) {
+                          el.src = unsplashImages[n.id];
                         } else {
                           el.style.display = 'none';
                           const ph = el.parentElement?.querySelector('.news-card-img-placeholder') as HTMLElement|null;
@@ -1043,18 +1237,12 @@ export default function PageNews({
                       }}
                     />
                   ) : null}
-                  {/* Placeholder hanya muncul jika tidak ada thumbnail */}
-                  {!n.thumbnail && !ogImages[n.url] && (
-                    <div className="news-card-img-placeholder">
-                      {n.emoji || '📰'}
-                    </div>
-                  )}
-                  {/* Hidden placeholder untuk fallback ketika img gagal load */}
-                  {(n.thumbnail || ogImages[n.url]) && (
-                    <div className="news-card-img-placeholder" style={{display:'none'}}>
-                      {n.emoji || '📰'}
-                    </div>
-                  )}
+                  {/* SVG Placeholder — muncul jika tidak ada thumbnail DAN tidak ada unsplash */}
+                  <div
+                    className="news-card-img-placeholder"
+                    style={{display: n.thumbnail || ogImages[n.url] || unsplashImages[n.id] ? 'none' : 'flex'}}
+                    dangerouslySetInnerHTML={{__html: getPlaceholderSVG(n.category, n.pairs?.[0])}}
+                  />
                   <div className="news-card-body">
                     <div className="news-card-meta">
                       <span className="news-card-source">{escHtml(n.source)}</span>

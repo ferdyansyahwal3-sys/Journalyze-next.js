@@ -2,6 +2,93 @@
 
 "use client";
 
+import { useEffect, useState } from 'react';
+import { liveRates, calcDailyGrowth, getLotByBal, idrToDisp, fmtDispCur, RATES_CACHE_KEY, type Currency } from '@/lib/riskCalc';
+
+function usePlanSummary() {
+  const [data, setData] = useState<{
+    pair: string; currency: Currency; balance: number; target: number;
+    months: number; leverage: number;
+    balanceDisp: string; targetDisp: string;
+    dgPct: string; totalDays: number;
+    pipValDisp: string; pipValLotDisp: string;
+    pipsDay1: number; trdPerDay: number;
+    lotDay1: number; targetHarianDisp: string; valid: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('jz_state') || 'null');
+      if (!s || !s.balance || !s.target || s.target <= s.balance) return;
+
+      const { pair = 'XAUUSD', currency = 'IDR', balance, target, months = 1, leverage = 500 } = s;
+
+      const cached = JSON.parse(localStorage.getItem(RATES_CACHE_KEY) || 'null');
+      const usdIdr = cached?.USD_IDR || liveRates.USD_IDR || 16462;
+      const jpyIdr = cached?.JPY_IDR || liveRates.JPY_IDR || 108;
+
+      // Pip value per 1 lot dalam satuan display
+      const pipVal1Lot = (() => {
+        if (currency === 'CENT') {
+          if (pair === 'USDJPY') return (jpyIdr / usdIdr) * 1000 * 100;
+          if (pair === 'BTCUSD') return 100;
+          return 1000;
+        }
+        if (currency === 'USD') {
+          if (pair === 'USDJPY') return (jpyIdr * 1000) / usdIdr;
+          return 10;
+        }
+        if (pair === 'USDJPY') return jpyIdr * 1000;
+        return 10 * usdIdr;
+      })();
+
+      const toDisp = (v: number) => idrToDisp(v, currency);
+      const fmt = (v: number) => fmtDispCur(v, currency);
+      const dg = calcDailyGrowth(balance, target, months);
+      const dt = Math.round(balance * dg);
+      const lot = getLotByBal(currency === 'CENT' ? toDisp(balance) : balance, currency);
+      const dtDisp = toDisp(dt);
+      const pipValForLot = pipVal1Lot * lot;
+      const pips = pipValForLot > 0 ? Math.ceil(dtDisp / pipValForLot) : 0;
+      const trd = Math.max(1, Math.ceil(pips / 40));
+      const totalDays = months * 22;
+
+      // Format pip value per 0.01 lot (untuk keterangan)
+      const pipVal001 = pipVal1Lot * 0.01;
+      const pipValStr = (() => {
+        if (currency === 'CENT') return pipVal001.toFixed(2) + '¢';
+        if (currency === 'USD') return '$' + pipVal001.toFixed(4);
+        return 'Rp ' + Math.round(pipVal001).toLocaleString('id-ID');
+      })();
+
+      // Format pip value per lot yang dipakai (untuk penjelasan pips)
+      const pipValLotStr = (() => {
+        const v = pipValForLot;
+        if (currency === 'CENT') return v.toFixed(2) + '¢';
+        if (currency === 'USD') return '$' + v.toFixed(4);
+        return 'Rp ' + Math.round(v).toLocaleString('id-ID');
+      })();
+
+      setData({
+        pair, currency, balance, target, months, leverage,
+        balanceDisp: fmt(toDisp(balance)),
+        targetDisp: fmt(toDisp(target)),
+        dgPct: (dg * 100).toFixed(2),
+        totalDays,
+        pipValDisp: pipValStr + ' / 0.01 lot',
+        pipValLotDisp: pipValLotStr + ' / pip',
+        pipsDay1: pips,
+        trdPerDay: trd,
+        lotDay1: lot,
+        targetHarianDisp: fmt(dtDisp),
+        valid: true,
+      });
+    } catch { /* silent */ }
+  }, []);
+
+  return data;
+}
+
 export default function PageHome({
   active,
   switchPage,
@@ -13,6 +100,7 @@ export default function PageHome({
   openApiKeyModal: () => void;
   hideBonus?: boolean;
 }) {
+  const plan = usePlanSummary();
   return (
     <div className={`page${active ? ' active' : ''}`} id="page-home">
 
@@ -281,10 +369,81 @@ export default function PageHome({
                 risiko yang sudah kamu isi. Tabel milestones menampilkan target saldo per hari lengkap dengan
                 estimasi lot dan pips yang perlu dicapai.
               </div>
-              <span className="step-tag" onClick={() => switchPage('plan')}>📅 Buka Plan →</span>
+
+              {/* ── Penjelasan naratif per kolom tabel Plan ── */}
+              {plan?.valid ? (
+                <div className="step-desc" style={{ marginTop: '14px' }}>
+
+                  <strong style={{ color: 'var(--gold2)' }}>Cara membaca tabel Trading Plan kamu:</strong>
+                  <br /><br />
+
+                  <strong>📅 Kolom DAY &amp; BALANCE</strong><br />
+                  Setiap baris mewakili 1 hari trading. Balance di hari 1 adalah saldo awal kamu
+                  yaitu <strong style={{ color: 'var(--gold2)' }}>{plan.balanceDisp}</strong>, lalu
+                  setiap harinya bertambah sesuai target profit harian yang berhasil dicapai
+                  (compounding — profit hari ini jadi modal hari berikutnya).
+                  <br /><br />
+
+                  <strong>📈 Kolom TARGET PROFIT &amp; %</strong><br />
+                  Target profit harian dihitung dari rumus compound:
+                  saldo awal <strong style={{ color: 'var(--gold2)' }}>{plan.balanceDisp}</strong> →
+                  target akhir <strong style={{ color: 'var(--gold2)' }}>{plan.targetDisp}</strong> dalam{' '}
+                  <strong style={{ color: 'var(--gold2)' }}>{plan.totalDays} hari</strong> ({plan.months} bulan × 22 hari kerja).
+                  Hasilnya: pertumbuhan <strong style={{ color: 'var(--green)' }}>{plan.dgPct}% per hari</strong>.
+                  Hari pertama berarti kamu perlu profit{' '}
+                  <strong style={{ color: 'var(--green)' }}>{plan.targetHarianDisp}</strong>.
+                  <br /><br />
+
+                  <strong>📦 Kolom LOT</strong><br />
+                  Lot disesuaikan otomatis berdasarkan besar saldo hari itu — semakin besar saldo,
+                  lot naik secara bertahap. Di hari pertama kamu pakai{' '}
+                  <strong style={{ color: 'var(--blue)' }}>{plan.lotDay1.toFixed(2)} lot</strong>.
+                  Jangan naikkan lot sendiri di luar tabel — bisa merusak kalkulasi compounding.
+                  <br /><br />
+
+                  <strong>🔢 Kolom TRD (Jumlah Trade)</strong><br />
+                  Jumlah trade dihitung dari: <em>total pips ÷ 40</em> (maksimal 40 pips per 1 trade).
+                  Hari pertama kamu butuh{' '}
+                  <strong style={{ color: 'var(--gold2)' }}>{plan.pipsDay1} pips</strong>, dibagi 40 →
+                  jadi <strong style={{ color: 'var(--gold2)' }}>{plan.trdPerDay}x trade</strong>.
+                  Kalau sudah tercapai, <strong style={{ color: 'var(--red)' }}>berhenti — jangan tambah trade.</strong>
+                  <br /><br />
+
+                  <strong>📏 Kolom PIPS &amp; PIPS FIX</strong><br />
+                  Pips dihitung dari: <em>target profit harian ÷ (pip value × lot)</em>.
+                  Pip value pasangan <strong>{plan.pair}</strong> untuk{' '}
+                  <strong>{plan.lotDay1.toFixed(2)} lot</strong> adalah{' '}
+                  <strong style={{ color: 'var(--blue)' }}>{plan.pipValLotDisp}</strong>.
+                  Jadi: <strong>{plan.targetHarianDisp}</strong> ÷ <strong>{plan.pipValLotDisp}</strong> ={' '}
+                  <strong style={{ color: 'var(--gold2)' }}>~{plan.pipsDay1} pips</strong>.
+                  Kolom PIPS FIX = nilai pips itu sendiri (sudah dibulatkan ke atas).
+                  <br /><br />
+
+                  <strong>💳 Kolom MARGIN/TRADE</strong><br />
+                  Estimasi margin yang dikunci broker per trade dengan leverage{' '}
+                  <strong>1:{plan.leverage}</strong>. Pastikan saldo kamu cukup untuk menanggung
+                  margin ini, terutama kalau buka beberapa trade sekaligus.
+                  <br /><br />
+
+                  <strong>✅ Kolom EXPECTED SALDO</strong><br />
+                  Proyeksi saldo akhir hari itu jika target profit tercapai.
+                  Ini adalah angka <em>ideal</em> — bukan jaminan. Kalau hari itu loss,
+                  jangan kejar target dengan overtrade. Ikuti rencana, evaluasi di jurnal,
+                  dan mulai lagi besok.
+                </div>
+              ) : (
+                <div className="step-desc" style={{ marginTop: '10px' }}>
+                  ⚠️ Isi profil risiko di tab{' '}
+                  <strong style={{ color: 'var(--gold2)', cursor: 'pointer' }} onClick={() => switchPage('risk')}>
+                    Risiko
+                  </strong>{' '}
+                  dulu untuk melihat penjelasan dengan angka trading plan kamu secara personal.
+                </div>
+              )}
+
+              <span className="step-tag" style={{ marginTop: '12px', display: 'inline-block' }} onClick={() => switchPage('plan')}>📅 Buka Plan →</span>
             </div>
           </div>
-
           {/* STEP 7: TAB NEWS */}
           <div className="home-step">
             <div className="step-num">7</div>

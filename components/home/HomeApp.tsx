@@ -661,6 +661,33 @@ export default function HomeApp() {
                         </div>
                       ))}
                     </div>
+                    {/* ── Panduan Per Trade ── */}
+                    <div style={{...jmStyles.box, marginTop: 10}}>
+                      <div style={jmStyles.boxHead}>
+                        <span style={jmStyles.boxTitle}>📐 Panduan Per Trade</span>
+                        <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:7,color:'#6A6050',letterSpacing:1}}>XAUUSD · 0.01 lot</span>
+                      </div>
+                      {[
+                        {l:'💹 Value per Pip',    v:'Rp 1.646',  note:'per 0.01 lot',   c:'#60A5FA'},
+                        {l:'📏 Target per Trade', v:'40 pips',   note:'≈ Rp 65.840',    c:'#E8C567'},
+                        {l:'🛑 Stop Loss Max',    v:'20 pips',   note:'≈ Rp 32.920',    c:'#E84040'},
+                        {l:'⚖️ Risk / Reward',    v:'1 : 2',     note:'minimal',         c:'#22C55E'},
+                        {l:'🔢 Maks Trade / Hari',v:'3x',        note:'lalu stop',       c:'#F8F4EC'},
+                      ].map((r,i)=>(
+                        <div key={i} style={{
+                          display:'flex', alignItems:'center', justifyContent:'space-between',
+                          padding:'7px 14px',
+                          borderBottom: i<4 ? '1px solid rgba(255,255,255,0.03)' : 'none',
+                          gap: 8,
+                        }}>
+                          <span style={jmStyles.rlbl}>{r.l}</span>
+                          <div style={{display:'flex',alignItems:'center',gap:6}}>
+                            <span style={{...jmStyles.rval,color:r.c}}>{r.v}</span>
+                            <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:8,color:'#4A4440'}}>{r.note}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>

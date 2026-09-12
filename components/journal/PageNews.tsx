@@ -456,11 +456,6 @@ export default function PageNews({
   // Unsplash image cache — key: article id, value: image URL
   const [unsplashImages, setUnsplashImages] = useState<Record<string,string>>({});
   const unsplashFetchingRef = useRef<Set<string>>(new Set());
-
-  // Ambil Unsplash key dari localStorage
-  const getUnsplashKey = useCallback(() => {
-    return typeof window !== 'undefined' ? localStorage.getItem('jz_unsplash_key') || '' : '';
-  }, []);
   const loadingRef = useRef(false);
 
   // ── Phase 14: AI hook ─────────────────────────────────────────────────────
@@ -473,9 +468,6 @@ export default function PageNews({
 
   // ── Lazy-fetch Unsplash untuk artikel tanpa thumbnail ─────────────────────
   const fetchUnsplashImages = useCallback(async (items: NewsItem[]) => {
-    const key = getUnsplashKey();
-    if (!key) return; // skip jika tidak ada key
-
     const missing = items.filter(n =>
       !n.thumbnail &&
       !unsplashImages[n.id] &&
@@ -493,8 +485,9 @@ export default function PageNews({
     await Promise.allSettled(batch.map(async (n) => {
       unsplashFetchingRef.current.add(n.id);
       try {
+        // Key dibaca dari env UNSPLASH_ACCESS_KEY di server — tidak perlu kirim dari browser
         const res = await fetch(
-          `/api/unsplash-proxy?title=${encodeURIComponent(n.title)}&category=${n.category}&key=${encodeURIComponent(key)}`,
+          `/api/unsplash-proxy?title=${encodeURIComponent(n.title)}&category=${n.category}`,
           { signal: AbortSignal.timeout(8000) }
         );
         if (res.ok) {
@@ -505,7 +498,7 @@ export default function PageNews({
         }
       } catch { /* silent */ }
     }));
-  }, [getUnsplashKey, unsplashImages]);
+  }, [unsplashImages]);
 
   // ── Phase 14: trigger AI setelah berita loaded ────────────────────────────
   const triggerAI = useCallback(async (items: NewsItem[]) => {

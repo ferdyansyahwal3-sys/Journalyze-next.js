@@ -1,9 +1,9 @@
 'use client'
-// components/live/LivePublicView.tsx
-// Tampilan read-only statistik trading untuk halaman publik /live/[token]
-// Client component supaya bisa pakai Chart.js
+// components/live/LivePublicView.tsx — REDESIGN TOTAL
+// Design system identik dengan journal: Cormorant + Outfit + JetBrains Mono
+// CSS vars dari live.css (--bg, --gold, --green, --red, --border, dst)
 
-import { useMemo } from 'react'
+import { useMemo, useEffect, useRef, useState } from 'react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -16,7 +16,7 @@ export interface Trade {
   entry?: number
   close?: number
   pl?: number
-  result: string   // 'Profit' | 'Lose'
+  result: string
   catatan?: string
 }
 
@@ -36,21 +36,49 @@ interface Props {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function calcStats(trades: Trade[]) {
-  const total  = trades.length
-  const wins   = trades.filter(t => t.result === 'Profit').length
-  const losses = trades.filter(t => t.result === 'Lose').length
-  const be     = trades.filter(t => t.result === 'BE' || t.result === 'BE').length
+  const total   = trades.length
+  const wins    = trades.filter(t => t.result === 'Profit').length
+  const losses  = trades.filter(t => t.result === 'Lose').length
   const winrate = total > 0 ? (wins / total) * 100 : 0
+
   const totalPnl = trades.reduce((acc, t) => acc + (t.pl || 0), 0)
-  const avgWin   = wins > 0
-    ? trades.filter(t => t.result === 'Profit').reduce((a, t) => a + (t.pl || 0), 0) / wins
-    : 0
-  const avgLoss  = losses > 0
-    ? Math.abs(trades.filter(t => t.result === 'Lose').reduce((a, t) => a + (t.pl || 0), 0) / losses)
-    : 0
+
+  const winTrades  = trades.filter(t => t.result === 'Profit')
+  const lossTrades = trades.filter(t => t.result === 'Lose')
+
+  const avgWin  = winTrades.length > 0
+    ? winTrades.reduce((a, t) => a + (t.pl || 0), 0) / winTrades.length : 0
+  const avgLoss = lossTrades.length > 0
+    ? Math.abs(lossTrades.reduce((a, t) => a + (t.pl || 0), 0) / lossTrades.length) : 0
   const rr = avgLoss > 0 ? avgWin / avgLoss : 0
 
-  // Equity curve (kumulatif)
+  // Best & Worst
+  const bestTrade  = trades.reduce((best, t) =>
+    (t.pl || 0) > (best?.pl || -Infinity) ? t : best, null as Trade | null)
+  const worstTrade = trades.reduce((worst, t) =>
+    (t.pl || 0) < (worst?.pl || Infinity) ? t : worst, null as Trade | null)
+
+  // Streak
+  let streak = 0
+  let streakType: 'win' | 'loss' | null = null
+  for (const t of trades) {
+    if (t.result === 'Profit') {
+      if (streakType === 'win') streak++
+      else { streakType = 'win'; streak = 1 }
+    } else if (t.result === 'Lose') {
+      if (streakType === 'loss') streak++
+      else { streakType = 'loss'; streak = 1 }
+    } else break
+  }
+
+  // Pair breakdown
+  const pairMap: Record<string, number> = {}
+  trades.forEach(t => { pairMap[t.pair] = (pairMap[t.pair] || 0) + 1 })
+  const pairs = Object.entries(pairMap)
+    .sort((a, b) => b[1] - a[1])
+    .map(([pair, count]) => ({ pair, count, pct: total > 0 ? (count / total) * 100 : 0 }))
+
+  // Equity curve (kumulatif, oldest→newest)
   const equity: number[] = []
   let running = 0
   ;[...trades].reverse().forEach(t => {
@@ -58,261 +86,434 @@ function calcStats(trades: Trade[]) {
     equity.push(running)
   })
 
-  return { total, wins, losses, be, winrate, totalPnl, avgWin, avgLoss, rr, equity }
+  return {
+    total, wins, losses, winrate, totalPnl,
+    avgWin, avgLoss, rr,
+    bestTrade, worstTrade,
+    streak, streakType,
+    pairs, equity,
+  }
 }
 
 function fmtNum(n: number, dec = 2): string {
-  return n.toLocaleString('id-ID', { minimumFractionDigits: dec, maximumFractionDigits: dec })
+  return n.toLocaleString('id-ID', {
+    minimumFractionDigits: dec,
+    maximumFractionDigits: dec,
+  })
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+function fmtPnl(n: number): string {
+  return (n >= 0 ? '+' : '') + fmtNum(n)
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
 
 export default function LivePublicView({ trades, shareToken, config }: Props) {
-  const stats = useMemo(() => calcStats(trades), [trades])
+  const stats        = useMemo(() => calcStats(trades), [trades])
   const recentTrades = trades.slice(0, 20)
+  const [now, setNow] = useState('')
+
+  useEffect(() => {
+    const fmt = () => {
+      const d = new Date()
+      setNow(d.toLocaleDateString('id-ID', {
+        day: '2-digit', month: 'long', year: 'numeric',
+      }) + ' · ' + d.toLocaleTimeString('id-ID', {
+        hour: '2-digit', minute: '2-digit',
+      }))
+    }
+    fmt()
+    const t = setInterval(fmt, 60000)
+    return () => clearInterval(t)
+  }, [])
 
   return (
-    <div className="lpv-root">
+    <div className="live-view lv-root">
 
-      {/* ── Brand header ─────────────────────────────── */}
-      <header className="lpv-header">
-        <div className="lpv-brand">
-          <span className="lpv-live-badge">● LIVE</span>
-          <span className="lpv-brand-name">Journalyze</span>
+      {/* ── TOPBAR ─────────────────────────────────────────────────── */}
+      <header className="topbar">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span className="brand-logo">
+            Journal<em>yze</em>
+          </span>
+          <span className="brand-tag">Live</span>
         </div>
-        <p className="lpv-subtitle">Trading Journal — Statistik Publik</p>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 9,
+            color: 'var(--text3)',
+            letterSpacing: '1px',
+          }}>
+            {now}
+          </span>
+          <span className="live-badge">Live</span>
+        </div>
       </header>
 
-      {/* ── Summary cards ───────────────────────────── */}
-      <section className="lpv-section">
-        <div className="lpv-cards">
-          <StatCard label="Total Trade" value={String(stats.total)} />
-          <StatCard
+      {/* ── READONLY BAR ───────────────────────────────────────────── */}
+      <div className="live-readonly-bar">
+        <span style={{ color: 'var(--gold)', opacity: .5 }}>◆</span>
+        Statistik Publik — Read-only View
+        <span style={{ color: 'var(--gold)', opacity: .5 }}>◆</span>
+      </div>
+
+      {/* ── MAIN ───────────────────────────────────────────────────── */}
+      <main className="main" style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 20px 80px' }}>
+
+        {/* Page header */}
+        <div className="ph">
+          <div>
+            <div className="ph-label">Trading Journal</div>
+            <h1 className="ph-title">
+              Live <em>Statistics</em>
+            </h1>
+            <p className="ph-sub">
+              Snapshot publik · {stats.total} total trade tercatat
+            </p>
+          </div>
+        </div>
+
+        {/* ── STAT CARDS ─────────────────────────────────────────── */}
+        <div className="stat-row lv-anim d1" style={{ gridTemplateColumns: 'repeat(6,1fr)', gap: 10, marginBottom: 12 }}>
+          <SCard label="Total Trade" value={String(stats.total)} />
+          <SCard
             label="Total PnL"
-            value={(stats.totalPnl >= 0 ? '+' : '') + fmtNum(stats.totalPnl)}
-            accent={stats.totalPnl >= 0 ? 'green' : 'red'}
+            value={fmtPnl(stats.totalPnl)}
+            cls={stats.totalPnl >= 0 ? 'green' : 'red'}
           />
           {config.showWinrate && (
-            <StatCard
+            <SCard
               label="Win Rate"
               value={fmtNum(stats.winrate, 1) + '%'}
-              accent={stats.winrate >= 50 ? 'green' : 'red'}
+              cls={stats.winrate >= 50 ? 'green' : 'red'}
             />
           )}
-          <StatCard
+          <SCard
             label="Risk Reward"
             value={'1 : ' + fmtNum(stats.rr, 2)}
-            accent={stats.rr >= 1 ? 'green' : 'neutral'}
           />
-          <StatCard label="Win" value={String(stats.wins)} accent="green" />
-          <StatCard label="Loss" value={String(stats.losses)} accent="red" />
+          <SCard label="Win" value={String(stats.wins)} cls="green" />
+          <SCard label="Loss" value={String(stats.losses)} cls="red" />
         </div>
-      </section>
 
-      {/* ── Equity curve (inline sparkline via SVG) ── */}
-      {config.showEquity && stats.equity.length > 1 && (
-        <section className="lpv-section">
-          <h2 className="lpv-section-title">Equity Curve</h2>
-          <div className="lpv-equity-wrap">
-            <EquitySvg points={stats.equity} />
+        {/* ── STREAK + BEST/WORST ────────────────────────────────── */}
+        <div className="lv-highlight-row lv-anim d2">
+          {/* Streak */}
+          <div className="box" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 14, marginBottom: 0 }}>
+            <div>
+              <div className="lv-micro-label">Current Streak</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
+                <span style={{ fontSize: 20 }}>
+                  {stats.streakType === 'win' ? '🔥' : stats.streakType === 'loss' ? '❄️' : '—'}
+                </span>
+                <span style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 18,
+                  fontWeight: 700,
+                  color: stats.streakType === 'win'
+                    ? 'var(--green)'
+                    : stats.streakType === 'loss'
+                      ? 'var(--red)'
+                      : 'var(--text3)',
+                }}>
+                  {stats.streak > 0 ? `${stats.streak}${stats.streakType === 'win' ? 'W' : 'L'}` : '—'}
+                </span>
+              </div>
+            </div>
+            <div style={{ width: 1, height: 36, background: 'var(--border)', flexShrink: 0 }} />
+            <div>
+              <div className="lv-micro-label">Win / Loss</div>
+              <div style={{ marginTop: 5, display: 'flex', gap: 6, alignItems: 'center' }}>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, fontWeight: 700, color: 'var(--green)' }}>
+                  {stats.wins}W
+                </span>
+                <span style={{ color: 'var(--text4)', fontSize: 10 }}>/</span>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, fontWeight: 700, color: 'var(--red)' }}>
+                  {stats.losses}L
+                </span>
+              </div>
+            </div>
+            <div style={{ width: 1, height: 36, background: 'var(--border)', flexShrink: 0 }} />
+            <div>
+              <div className="lv-micro-label">Avg Win / Avg Loss</div>
+              <div style={{ marginTop: 5, display: 'flex', gap: 6, alignItems: 'center' }}>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 700, color: 'var(--green)' }}>
+                  {fmtPnl(stats.avgWin)}
+                </span>
+                <span style={{ color: 'var(--text4)', fontSize: 10 }}>/</span>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 700, color: 'var(--red)' }}>
+                  -{fmtNum(stats.avgLoss)}
+                </span>
+              </div>
+            </div>
           </div>
-        </section>
-      )}
 
-      {/* ── Recent trades table ───────────────────── */}
-      {config.showTrades && recentTrades.length > 0 && (
-        <section className="lpv-section">
-          <h2 className="lpv-section-title">20 Trade Terakhir</h2>
-          <div className="lpv-table-wrap">
-            <table className="lpv-table">
-              <thead>
-                <tr>
-                  <th>Tanggal</th>
-                  <th>Pair</th>
-                  <th>Tipe</th>
-                  <th>Lot</th>
-                  <th>PnL</th>
-                  <th>Hasil</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentTrades.map(t => (
-                  <tr key={t.id}>
-                    <td>{t.tanggal}</td>
-                    <td>{t.pair}</td>
-                    <td className={t.posisi === 'Buy' ? 'text-green' : 'text-red'}>{t.posisi}</td>
-                    <td>{t.lot}</td>
-                    <td className={(t.pl || 0) >= 0 ? 'text-green' : 'text-red'}>
-                      {((t.pl || 0) >= 0 ? '+' : '') + fmtNum(t.pl || 0)}
-                    </td>
-                    <td>
-                      <span className={`lpv-result-badge result-${t.result === 'Profit' ? 'win' : t.result === 'Lose' ? 'loss' : 'be'}`}>
-                        {t.result}
-                      </span>
-                    </td>
-                  </tr>
+          {/* Best trade */}
+          {stats.bestTrade && (
+            <div className="box lv-highlight-card lv-highlight-best" style={{ marginBottom: 0 }}>
+              <div className="lv-micro-label" style={{ color: 'var(--green)', marginBottom: 8 }}>
+                ▲ Best Trade
+              </div>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, fontWeight: 700, color: 'var(--green)' }}>
+                {fmtPnl(stats.bestTrade.pl || 0)}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>
+                {stats.bestTrade.pair} · {stats.bestTrade.tanggal}
+              </div>
+            </div>
+          )}
+
+          {/* Worst trade */}
+          {stats.worstTrade && (
+            <div className="box lv-highlight-card lv-highlight-worst" style={{ marginBottom: 0 }}>
+              <div className="lv-micro-label" style={{ color: 'var(--red)', marginBottom: 8 }}>
+                ▼ Worst Trade
+              </div>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, fontWeight: 700, color: 'var(--red)' }}>
+                {fmtPnl(stats.worstTrade.pl || 0)}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>
+                {stats.worstTrade.pair} · {stats.worstTrade.tanggal}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── EQUITY + PAIR BREAKDOWN ────────────────────────────── */}
+        <div className="lv-anim d3" style={{ display: 'grid', gridTemplateColumns: '1fr 260px', gap: 14, marginBottom: 14 }}>
+
+          {/* Equity curve */}
+          {config.showEquity && stats.equity.length > 1 && (
+            <div className="box" style={{ marginBottom: 0 }}>
+              <div className="box-head">
+                <span className="box-title">Equity Curve</span>
+                <span style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 9,
+                  color: stats.totalPnl >= 0 ? 'var(--green)' : 'var(--red)',
+                  fontWeight: 700,
+                }}>
+                  {fmtPnl(stats.totalPnl)}
+                </span>
+              </div>
+              <div className="box-body box-body-0" style={{ padding: '12px 18px 16px' }}>
+                <EquitySvg points={stats.equity} />
+              </div>
+            </div>
+          )}
+
+          {/* Pair breakdown */}
+          {stats.pairs.length > 0 && (
+            <div className="box" style={{ marginBottom: 0 }}>
+              <div className="box-head">
+                <span className="box-title">Pair Distribution</span>
+              </div>
+              <div className="box-body" style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {stats.pairs.slice(0, 6).map(({ pair, count, pct }) => (
+                  <div key={pair}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                      <span style={{
+                        fontFamily: "'JetBrains Mono', monospace",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: 'var(--gold2)',
+                      }}>{pair}</span>
+                      <span style={{
+                        fontFamily: "'JetBrains Mono', monospace",
+                        fontSize: 10,
+                        color: 'var(--text3)',
+                      }}>{count} · {fmtNum(pct, 1)}%</span>
+                    </div>
+                    <div style={{
+                      height: 4,
+                      background: 'var(--bg4)',
+                      borderRadius: 99,
+                      overflow: 'hidden',
+                    }}>
+                      <div style={{
+                        height: '100%',
+                        width: `${pct}%`,
+                        background: 'var(--gold)',
+                        borderRadius: 99,
+                        transition: 'width .6s ease',
+                      }} />
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── TRADE TABLE ────────────────────────────────────────── */}
+        {config.showTrades && recentTrades.length > 0 && (
+          <div className="box lv-anim d4" style={{ marginBottom: 0 }}>
+            <div className="box-head">
+              <span className="box-title">20 Trade Terakhir</span>
+              <span style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 9,
+                color: 'var(--text3)',
+              }}>Read-only</span>
+            </div>
+            <div className="tbl-scroll box-body-0">
+              <table className="dtable">
+                <thead>
+                  <tr>
+                    <th>Tanggal</th>
+                    <th>Pair</th>
+                    <th>Tipe</th>
+                    <th>Lot</th>
+                    <th>PnL</th>
+                    <th>Hasil</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentTrades.map(t => {
+                    const pnl = t.pl || 0
+                    return (
+                      <tr key={t.id}>
+                        <td style={{ color: 'var(--text2)' }}>{t.tanggal}</td>
+                        <td style={{
+                          fontFamily: "'JetBrains Mono', monospace",
+                          fontWeight: 700,
+                          color: 'var(--gold2)',
+                        }}>{t.pair}</td>
+                        <td>
+                          <span className={t.posisi === 'Buy' ? 'chip chip-buy' : 'chip chip-sell'}>
+                            {t.posisi}
+                          </span>
+                        </td>
+                        <td style={{ color: 'var(--text2)' }}>{t.lot}</td>
+                        <td className={pnl >= 0 ? 'pos-val' : 'neg-val'}>
+                          {fmtPnl(pnl)}
+                        </td>
+                        <td>
+                          <span className={
+                            t.result === 'Profit' ? 'chip chip-profit'
+                            : t.result === 'Lose'  ? 'chip chip-lose'
+                            : 'chip chip-gold'
+                          }>
+                            {t.result}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </section>
-      )}
+        )}
 
-      {/* ── Footer watermark ─────────────────────── */}
-      <footer className="lpv-footer">
-        <span>Powered by </span>
-        <strong>Journalyze</strong>
-        <span className="lpv-footer-dot">·</span>
-        <span className="lpv-footer-token">#{shareToken.slice(-6)}</span>
-      </footer>
+        {/* ── FOOTER ─────────────────────────────────────────────── */}
+        <footer style={{
+          marginTop: 48,
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 6,
+        }}>
+          <span style={{
+            fontFamily: "'Cormorant Garamond', serif",
+            fontSize: 18,
+            fontWeight: 700,
+            color: 'var(--gold2)',
+          }}>
+            Journal<em style={{ fontStyle: 'italic', color: 'var(--gold3)' }}>yze</em>
+          </span>
+          <span style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 8,
+            letterSpacing: 2,
+            textTransform: 'uppercase' as const,
+            color: 'var(--text3)',
+          }}>
+            Public Live View · #{shareToken.slice(-6)}
+          </span>
+        </footer>
 
-      {/* ── Styles ───────────────────────────────── */}
+      </main>
+
+      {/* ── EXTRA STYLES ───────────────────────────────────────────── */}
       <style>{`
-        *, *::before, *::after { box-sizing: border-box; }
-
-        .lpv-root {
+        .lv-root {
           min-height: 100vh;
-          background: var(--bg-main, #0f0f1a);
-          color: var(--text-primary, #e0e0e0);
-          font-family: var(--font-body, 'Inter', sans-serif);
-          padding: 0 0 40px;
+          background: var(--bg);
+          color: var(--text);
         }
 
-        /* Header */
-        .lpv-header {
-          background: var(--bg-card, #1a1a2e);
-          border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.08));
-          padding: 20px 24px 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-        .lpv-brand { display: flex; align-items: center; gap: 10px; }
-        .lpv-live-badge {
-          font-size: 10px;
-          font-weight: 700;
-          letter-spacing: 0.1em;
-          color: #22c55e;
-          background: rgba(34,197,94,0.12);
-          border: 1px solid rgba(34,197,94,0.3);
-          border-radius: 20px;
-          padding: 2px 8px;
-          animation: livePulse 2s infinite;
-        }
-        @keyframes livePulse {
-          0%, 100% { opacity: 1; }
-          50%       { opacity: 0.5; }
-        }
-        .lpv-brand-name { font-size: 20px; font-weight: 700; }
-        .lpv-subtitle   { font-size: 12px; color: var(--text-secondary, #9ca3af); margin: 0; }
-
-        /* Section */
-        .lpv-section { padding: 24px 24px 0; }
-        .lpv-section-title {
-          font-size: 13px;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-          color: var(--text-secondary, #9ca3af);
-          margin: 0 0 14px;
-        }
-
-        /* Stat Cards */
-        .lpv-cards {
+        /* highlight row */
+        .lv-highlight-row {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-          gap: 12px;
+          grid-template-columns: 1fr 180px 180px;
+          gap: 10px;
+          margin-bottom: 14px;
         }
-        .lpv-stat-card {
-          background: var(--bg-card, #1a1a2e);
-          border: 1px solid var(--border-color, rgba(255,255,255,0.08));
-          border-radius: 10px;
+
+        /* best/worst cards */
+        .lv-highlight-card {
           padding: 14px 16px;
         }
-        .lpv-stat-label {
-          font-size: 11px;
-          color: var(--text-secondary, #9ca3af);
-          margin-bottom: 6px;
-          font-weight: 500;
+        .lv-highlight-best {
+          border-color: var(--green-bd);
+          background: var(--green-bg);
         }
-        .lpv-stat-value {
-          font-size: 20px;
-          font-weight: 700;
-          line-height: 1;
-        }
-        .lpv-stat-value.accent-green  { color: #22c55e; }
-        .lpv-stat-value.accent-red    { color: #f87171; }
-        .lpv-stat-value.accent-neutral { color: var(--text-primary, #e0e0e0); }
-
-        /* Equity */
-        .lpv-equity-wrap {
-          background: var(--bg-card, #1a1a2e);
-          border: 1px solid var(--border-color, rgba(255,255,255,0.08));
-          border-radius: 10px;
-          padding: 16px;
-          overflow: hidden;
+        .lv-highlight-worst {
+          border-color: var(--red-bd);
+          background: var(--red-bg);
         }
 
-        /* Table */
-        .lpv-table-wrap { overflow-x: auto; }
-        .lpv-table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 13px;
-        }
-        .lpv-table th {
-          text-align: left;
-          padding: 8px 12px;
-          font-size: 11px;
-          font-weight: 600;
+        /* micro label */
+        .lv-micro-label {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 7.5px;
+          letter-spacing: 1.5px;
           text-transform: uppercase;
-          letter-spacing: 0.06em;
-          color: var(--text-secondary, #9ca3af);
-          border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.08));
-          white-space: nowrap;
+          color: var(--text3);
         }
-        .lpv-table td {
-          padding: 10px 12px;
-          border-bottom: 1px solid rgba(255,255,255,0.04);
-          color: var(--text-primary, #e0e0e0);
-          white-space: nowrap;
+
+        /* anim */
+        .lv-anim {
+          opacity: 0;
+          transform: translateY(8px);
+          animation: lv-fadeup .4s ease forwards;
         }
-        .lpv-table tr:last-child td { border-bottom: none; }
-        .lpv-table tr:hover td { background: rgba(255,255,255,0.03); }
-
-        .text-green { color: #22c55e; }
-        .text-red   { color: #f87171; }
-
-        .lpv-result-badge {
-          font-size: 10px;
-          font-weight: 700;
-          padding: 2px 8px;
-          border-radius: 20px;
-          letter-spacing: 0.06em;
+        @keyframes lv-fadeup {
+          to { opacity: 1; transform: none; }
         }
-        .result-win  { background: rgba(34,197,94,0.15);  color: #22c55e; }
-        .result-loss { background: rgba(248,113,113,0.15); color: #f87171; }
-        .result-be   { background: rgba(234,179,8,0.15);  color: #eab308; }
+        .lv-anim.d1 { animation-delay: .05s; }
+        .lv-anim.d2 { animation-delay: .12s; }
+        .lv-anim.d3 { animation-delay: .19s; }
+        .lv-anim.d4 { animation-delay: .26s; }
 
-        /* Footer */
-        .lpv-footer {
-          margin-top: 40px;
-          text-align: center;
-          font-size: 12px;
-          color: var(--text-secondary, #6b7280);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 4px;
+        /* table overrides for live */
+        .lv-root .tbl-scroll {
+          max-height: none;
+          border-radius: 0;
+          border: none;
+          border-top: 1px solid var(--border);
         }
-        .lpv-footer strong { color: var(--text-primary, #9ca3af); }
-        .lpv-footer-dot    { opacity: 0.4; }
-        .lpv-footer-token  { font-family: monospace; opacity: 0.4; }
+        .lv-root .dtable {
+          min-width: 580px;
+        }
 
+        /* responsive */
+        @media (max-width: 768px) {
+          .lv-highlight-row {
+            grid-template-columns: 1fr;
+          }
+          .lv-root .lv-anim + div {
+            grid-template-columns: 1fr !important;
+          }
+        }
         @media (max-width: 480px) {
-          .lpv-section { padding: 20px 16px 0; }
-          .lpv-header  { padding: 16px; }
-          .lpv-cards   { grid-template-columns: repeat(2, 1fr); }
+          .stat-row {
+            grid-template-columns: repeat(3, 1fr) !important;
+          }
         }
       `}</style>
     </div>
@@ -321,54 +522,87 @@ export default function LivePublicView({ trades, shareToken, config }: Props) {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, accent = 'neutral' }: {
-  label:   string
-  value:   string
-  accent?: 'green' | 'red' | 'neutral'
+function SCard({ label, value, cls }: {
+  label: string
+  value: string
+  cls?: 'green' | 'red'
 }) {
   return (
-    <div className="lpv-stat-card">
-      <div className="lpv-stat-label">{label}</div>
-      <div className={`lpv-stat-value accent-${accent}`}>{value}</div>
+    <div className="scard">
+      <div className="scard-lbl">{label}</div>
+      <div className={`scard-val${cls ? ' ' + cls : ''}`}>{value}</div>
     </div>
   )
 }
 
-// SVG sparkline equity curve (no external lib needed)
+// SVG Equity Curve — styled sesuai tema journal (gold line, gradient fill)
 function EquitySvg({ points }: { points: number[] }) {
-  const W = 600, H = 120, PAD = 10
-  const min = Math.min(...points)
-  const max = Math.max(...points)
+  const W = 800, H = 140, PADX = 8, PADY = 16
+  const min   = Math.min(...points, 0)
+  const max   = Math.max(...points, 0)
   const range = max - min || 1
 
-  const xs = points.map((_, i) => PAD + (i / (points.length - 1)) * (W - PAD * 2))
-  const ys = points.map(p => PAD + (1 - (p - min) / range) * (H - PAD * 2))
+  const xs = points.map((_, i) =>
+    PADX + (i / Math.max(points.length - 1, 1)) * (W - PADX * 2))
+  const ys = points.map(p =>
+    PADY + (1 - (p - min) / range) * (H - PADY * 2))
 
-  const linePath = xs.map((x, i) => `${i === 0 ? 'M' : 'L'}${x},${ys[i]}`).join(' ')
-  const areaPath = `${linePath} L${xs[xs.length - 1]},${H - PAD} L${xs[0]},${H - PAD} Z`
+  const zero_y = PADY + (1 - (0 - min) / range) * (H - PADY * 2)
 
-  const lastY    = ys[ys.length - 1]
-  const isProfit = points[points.length - 1] >= 0
-  const color    = isProfit ? '#22c55e' : '#f87171'
+  const linePath = xs.map((x, i) =>
+    `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${ys[i].toFixed(1)}`).join(' ')
+  const areaPath = `${linePath} L${xs[xs.length-1].toFixed(1)},${zero_y.toFixed(1)} L${xs[0].toFixed(1)},${zero_y.toFixed(1)} Z`
+
+  const last     = points[points.length - 1]
+  const isProfit = last >= 0
+  const color    = isProfit ? 'var(--green)' : 'var(--red)'
+  const gradId   = isProfit ? 'lv-grad-g' : 'lv-grad-r'
 
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
       preserveAspectRatio="none"
-      style={{ width: '100%', height: '100px', display: 'block' }}
+      style={{ width: '100%', height: 130, display: 'block' }}
     >
       <defs>
-        <linearGradient id="eq-grad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"   stopColor={color} stopOpacity="0.3" />
-          <stop offset="100%" stopColor={color} stopOpacity="0"   />
+        <linearGradient id="lv-grad-g" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor="var(--green)" stopOpacity=".18" />
+          <stop offset="100%" stopColor="var(--green)" stopOpacity="0"   />
+        </linearGradient>
+        <linearGradient id="lv-grad-r" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor="var(--red)" stopOpacity=".18" />
+          <stop offset="100%" stopColor="var(--red)" stopOpacity="0"   />
         </linearGradient>
       </defs>
+
+      {/* Zero line */}
+      <line
+        x1={PADX} y1={zero_y} x2={W - PADX} y2={zero_y}
+        stroke="var(--border)" strokeWidth="1" strokeDasharray="3,4"
+      />
+
       {/* Area fill */}
-      <path d={areaPath} fill="url(#eq-grad)" />
+      <path d={areaPath} fill={`url(#${gradId})`} />
+
       {/* Line */}
-      <path d={linePath} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
-      {/* Last point dot */}
-      <circle cx={xs[xs.length - 1]} cy={lastY} r="4" fill={color} />
+      <path
+        d={linePath}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+
+      {/* Last dot */}
+      <circle
+        cx={xs[xs.length-1]} cy={ys[ys.length-1]}
+        r="4" fill={color}
+      />
+      <circle
+        cx={xs[xs.length-1]} cy={ys[ys.length-1]}
+        r="7" fill={color} fillOpacity=".15"
+      />
     </svg>
   )
 }

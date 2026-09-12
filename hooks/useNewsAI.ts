@@ -297,7 +297,11 @@ Balas HANYA JSON array dengan TEPAT ${batch.length} objek, tanpa markdown:
           const res = await fetch('/api/ai-proxy', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, apiKey: geminiNewsKey, maxTokens: 2000 }),
+            body: JSON.stringify({
+              prompt,
+              apiKey: geminiNewsKey, // server akan pakai env var GEMINI_API_KEY jika tersedia
+              maxTokens: 2000,
+            }),
             signal: AbortSignal.timeout(40000),
           });
           const data = await res.json();

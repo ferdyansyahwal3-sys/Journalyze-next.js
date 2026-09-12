@@ -52,11 +52,13 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const title    = searchParams.get('title') || '';
   const category = searchParams.get('category') || 'forex';
-  const apiKey   = searchParams.get('key') || process.env.UNSPLASH_ACCESS_KEY || '';
+
+  // Prioritas: env variable server → query param (fallback dev)
+  const apiKey = process.env.UNSPLASH_ACCESS_KEY || searchParams.get('key') || '';
 
   if (!apiKey) {
     return NextResponse.json(
-      { error: 'Unsplash API key required. Set UNSPLASH_ACCESS_KEY env var or pass ?key=...' },
+      { error: 'Set UNSPLASH_ACCESS_KEY di Vercel Environment Variables.' },
       { status: 400, headers: CORS }
     );
   }

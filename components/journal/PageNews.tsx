@@ -434,9 +434,11 @@ function getPlaceholderSVG(category: string, pair?: string): string {
 export default function PageNews({
   active,
   onOpenApiKeyModal,
+  aiLocked,
 }: {
   active: boolean;
   onOpenApiKeyModal?: () => void;
+  aiLocked?: boolean;
 }) {
   const [allData, setAllData]       = useState<NewsItem[]>([]);
   const [events, setEvents]         = useState<EconEvent[]>([]);
@@ -738,7 +740,7 @@ export default function PageNews({
         ) : (
           <button
             style={{background:'none',border:'none',color:'var(--gold2)',fontSize:'10px',cursor:'pointer',padding:'0',fontFamily:'inherit'}}
-            onClick={onOpenApiKeyModal}
+            onClick={aiLocked ? undefined : onOpenApiKeyModal}
           >
             ⚡ Aktifkan AI untuk analisis otomatis
           </button>

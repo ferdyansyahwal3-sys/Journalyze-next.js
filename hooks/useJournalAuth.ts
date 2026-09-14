@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { _sb } from '@/lib/supabaseClient';
-import { useJournalStore } from '@/store/useJournalStore';
+import { useJournalStore, type UserPlan } from '@/store/useJournalStore';
 
 const EDGE_FN_URL = 'https://icouldevrvvtkxiincle.supabase.co/functions/v1/validate-license';
 
@@ -12,6 +12,7 @@ export function useJournalAuth() {
   const setAuthOverlayVisible = useJournalStore((s) => s.setAuthOverlayVisible);
   const setCloudLoading       = useJournalStore((s) => s.setCloudLoading);
   const setDisplayName        = useJournalStore((s) => s.setDisplayName);
+  const setPlan               = useJournalStore((s) => s.setPlan);
 
   const [loginErr,    setLoginErr]    = useState('');
   const [regErr,      setRegErr]      = useState('');
@@ -20,14 +21,14 @@ export function useJournalAuth() {
   const [regBusy,     setRegBusy]     = useState(false);
   const [blockedMsg,  setBlockedMsg]  = useState('');
 
-  // ── onAuthSuccess — identik index.html baris 6905-6954 ──
+  // ── onAuthSuccess ──
   const onAuthSuccess = useCallback(
     async (user: NonNullable<Awaited<ReturnType<typeof _sb.auth.getUser>>['data']['user']>) => {
       try {
-        // Ambil is_blocked DAN display_name sekaligus — index.html baris 7136
+        // Ambil kolom profiles — ditambah plan & plan_type
         const { data: prof, error: profErr } = await _sb
           .from('profiles')
-          .select('is_blocked, display_name, notif_nickname')
+          .select('is_blocked, display_name, notif_nickname, plan')
           .eq('id', user.id)
           .maybeSingle();
 
@@ -39,10 +40,9 @@ export function useJournalAuth() {
           return;
         }
 
-        // Simpan display_name ke store — index.html baris 7137-7140
+        // Simpan display_name
         if (prof?.display_name) {
           setDisplayName(prof.display_name);
-          // Auto-seed notif_nickname dari nama pertama jika belum ada
           if (prof.notif_nickname) {
             localStorage.setItem('jz_notif_nickname', prof.notif_nickname);
           } else {
@@ -50,8 +50,22 @@ export function useJournalAuth() {
             localStorage.setItem('jz_notif_nickname', firstName);
           }
         }
+
+        // ── Set plan ke store ──
+        // Kolom `plan` di DB: 'free' | 'basic' | 'pro' | 'elite'
+        // Fallback ke 'free' kalau null/undefined
+        const rawPlan = (prof?.plan as string | null | undefined) ?? 'free';
+        const validPlans: UserPlan[] = ['free', 'basic', 'pro', 'elite'];
+        const resolvedPlan: UserPlan = validPlans.includes(rawPlan as UserPlan)
+          ? (rawPlan as UserPlan)
+          : 'free';
+
+        setPlan(resolvedPlan);
+
       } catch (e: any) {
         console.warn('[Journalyze] profiles check skip:', e.message);
+        // Default ke free kalau gagal fetch
+        setPlan('free');
       }
 
       setCurrentUser(user);
@@ -59,7 +73,7 @@ export function useJournalAuth() {
       setCloudLoading(true);
       setCloudLoading(false);
     },
-    [setCurrentUser, setAuthOverlayVisible, setCloudLoading, setDisplayName]
+    [setCurrentUser, setAuthOverlayVisible, setCloudLoading, setDisplayName, setPlan]
   );
 
   // ── Restore sesi + listener ──
@@ -144,8 +158,9 @@ export function useJournalAuth() {
     await _sb.auth.signOut();
     setCurrentUser(null);
     setDisplayName('');
+    setPlan('free');
     setAuthOverlayVisible(true);
-  }, [setCurrentUser, setDisplayName, setAuthOverlayVisible]);
+  }, [setCurrentUser, setDisplayName, setPlan, setAuthOverlayVisible]);
 
   return {
     doLogin, doRegister, doLogout,

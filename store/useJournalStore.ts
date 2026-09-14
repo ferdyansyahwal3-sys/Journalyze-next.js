@@ -5,6 +5,7 @@ import { create } from 'zustand';
 import type { User } from '@supabase/supabase-js';
 
 export type JournalPage = 'home' | 'risk' | 'plan' | 'data' | 'filter' | 'weekly' | 'monthly' | 'news' | 'profile';
+export type UserPlan = 'free' | 'basic' | 'pro' | 'elite';
 
 export const BN_MAIN: JournalPage[] = ['home', 'risk', 'plan', 'data', 'filter'];
 export const BN_MORE: JournalPage[] = ['weekly', 'monthly', 'news'];
@@ -23,6 +24,14 @@ interface JournalState {
   // Phase 13: display name dari tabel profiles
   displayName: string;
   setDisplayName: (n: string) => void;
+
+  // ── Plan ──
+  userPlan: UserPlan;
+  setPlan: (p: UserPlan) => void;
+
+  // ── Demo mode flag ──
+  isDemoMode: boolean;
+  setDemoMode: (v: boolean) => void;
 
   splashHiding: boolean;
   splashHidden: boolean;
@@ -60,6 +69,12 @@ export const useJournalStore = create<JournalState>((set, get) => ({
 
   displayName: '',
   setDisplayName: (displayName) => set({ displayName }),
+
+  userPlan: 'free',
+  setPlan: (userPlan) => set({ userPlan }),
+
+  isDemoMode: false,
+  setDemoMode: (isDemoMode) => set({ isDemoMode }),
 
   splashHiding: false,
   splashHidden: false,

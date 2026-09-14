@@ -1,66 +1,146 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { _sb as supabase } from '@/lib/supabaseClient'
-import { getMidtransAuthHeader, MIDTRANS_CONFIG, generateOrderId, JOURNALYZE_PRICE } from '@/lib/midtrans'
+import { _sb, _sbAdmin } from '@/lib/supabaseClient'
+import { getMidtransAuthHeader, MIDTRANS_CONFIG, generateOrderId } from '@/lib/midtrans'
+
+const VALID_PAKETS: Record<string, { label: string; nominal: number }> = {
+  basic: { label: 'Journalyze Basic - Akses 3 Bulan', nominal: 99000 },
+  pro: { label: 'Journalyze Pro - Akses Lifetime', nominal: 149000 },
+  elite: { label: 'Journalyze Elite - Lifetime + Review', nominal: 249000 },
+}
 
 export async function POST(req: NextRequest) {
   try {
-    
+    const body = await req.json()
+    const { paket, promo_code } = body
 
-    // Ambil user yang sedang login
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Validasi paket
+    const paketKey = paket in VALID_PAKETS ? paket : 'pro'
+    const paketInfo = VALID_PAKETS[paketKey]
+
+    let userId: string
+    let userEmail: string
+    let userName: string
+    let userPhone: string = ''
+
+    // ── Mode A: User sudah login (dari /checkout) ──
+    const { data: { user: sessionUser } } = await _sb.auth.getUser()
+
+    if (sessionUser) {
+      userId = sessionUser.id
+      userEmail = sessionUser.email || ''
+
+      // Ambil data profile
+      const { data: profile } = await _sbAdmin
+        .from('profiles')
+        .select('display_name, phone, plan')
+        .eq('id', userId)
+        .single()
+
+      if (profile?.plan === 'premium') {
+        return NextResponse.json({ error: 'Akun ini sudah premium.' }, { status: 409 })
+      }
+
+      userName = profile?.display_name || userEmail.split('@')[0]
+      userPhone = profile?.phone || ''
+
+    } else {
+      // ── Mode B: User baru (dari /order) ──
+      const { nama, phone, email, password } = body
+
+      if (!nama || !phone || !email || !password) {
+        return NextResponse.json({ error: 'Semua field wajib diisi' }, { status: 400 })
+      }
+      if (password.length < 8) {
+        return NextResponse.json({ error: 'Password minimal 8 karakter' }, { status: 400 })
+      }
+
+      userEmail = email.trim()
+      userName = nama.trim()
+      userPhone = phone
+
+      // Simpan lead
+      await _sbAdmin.from('leads').insert({
+        nama: userName,
+        email: userEmail,
+        phone: userPhone,
+        promo_code: promo_code || null,
+        status: 'pending',
+      }).catch(e => console.warn('Lead insert:', e.message))
+
+      // Cek email sudah terdaftar
+      const { data: existingUsers } = await _sbAdmin.auth.admin.listUsers()
+      const existingUser = existingUsers?.users?.find(u => u.email === userEmail)
+
+      if (existingUser) {
+        userId = existingUser.id
+
+        const { data: profile } = await _sbAdmin
+          .from('profiles')
+          .select('plan')
+          .eq('id', userId)
+          .single()
+
+        if (profile?.plan === 'premium') {
+          return NextResponse.json({ error: 'Email sudah terdaftar dan sudah premium. Silakan login.' }, { status: 409 })
+        }
+      } else {
+        // Buat akun baru
+        const { data: authData, error: authError } = await _sbAdmin.auth.admin.createUser({
+          email: userEmail,
+          password,
+          email_confirm: true,
+          user_metadata: { display_name: userName },
+        })
+
+        if (authError) {
+          return NextResponse.json({ error: 'Gagal membuat akun. Coba lagi.' }, { status: 400 })
+        }
+
+        userId = authData.user.id
+
+        await _sbAdmin.from('profiles').insert({
+          id: userId,
+          email: userEmail,
+          display_name: userName,
+          phone: userPhone,
+          plan: 'free',
+          is_activated: false,
+        })
+      }
     }
 
-    // Ambil profil user
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, display_name, email, plan')
-      .eq('id', user.id)
-      .single()
+    // Generate order ID & buat transaksi Midtrans
+    const orderId = generateOrderId(userId)
 
-    if (profileError || !profile) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
-    }
-
-    // Kalau sudah premium, jangan bisa beli lagi
-    if (profile.plan === 'premium') {
-      return NextResponse.json({ error: 'Already premium' }, { status: 400 })
-    }
-
-    // Generate order ID unik
-    const orderId = generateOrderId(user.id)
-
-    // Payload ke Midtrans
     const payload = {
       transaction_details: {
         order_id: orderId,
-        gross_amount: JOURNALYZE_PRICE,
+        gross_amount: paketInfo.nominal,
       },
       customer_details: {
-        first_name: profile.display_name || 'User',
-        email: profile.email || user.email,
+        first_name: userName,
+        email: userEmail,
+        phone: userPhone,
       },
       item_details: [
         {
-          id: 'JOURNALYZE-PREMIUM',
-          price: JOURNALYZE_PRICE,
+          id: `JOURNALYZE-${paketKey.toUpperCase()}`,
+          price: paketInfo.nominal,
           quantity: 1,
-          name: 'Journalyze Premium - Akses Seumur Hidup',
+          name: paketInfo.label,
         },
       ],
       callbacks: {
-        finish: `https://journalyze.my.id/payment/success?order_id=${orderId}`,
-        error: `https://journalyze.my.id/payment/failed`,
-        pending: `https://journalyze.my.id/payment/pending`,
+        finish: `https://journalyze.my.id/journal?payment=success`,
+        error: `https://journalyze.my.id/checkout?paket=${paketKey}&payment=failed`,
+        pending: `https://journalyze.my.id/journal?payment=pending`,
       },
-      // Webhook URL di-set di sini langsung
       notification_url: 'https://journalyze.my.id/api/midtrans/webhook',
-      // Custom field untuk tracking user ID
-      custom_field1: user.id,
+      custom_field1: userId,
+      custom_field2: userEmail,
+      custom_field3: paketKey,
     }
 
-    // Request ke Midtrans
     const response = await fetch(MIDTRANS_CONFIG.snapUrl, {
       method: 'POST',
       headers: {
@@ -70,24 +150,30 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify(payload),
     })
 
-    const data = await response.json()
+    const txData = await response.json()
 
     if (!response.ok) {
-      console.error('Midtrans error:', data)
-      return NextResponse.json({ error: 'Gagal membuat transaksi' }, { status: 500 })
+      console.error('Midtrans error:', txData)
+      return NextResponse.json({ error: 'Gagal membuat transaksi pembayaran.' }, { status: 500 })
     }
 
-    // Simpan order ID ke profil user untuk tracking
-    await supabase
-      .from('profiles')
+    // Update lead & profile dengan order ID
+    await _sbAdmin.from('leads')
       .update({ midtrans_order_id: orderId })
-      .eq('id', user.id)
+      .eq('email', userEmail)
+      .catch(() => {})
+
+    await _sbAdmin.from('profiles')
+      .update({ midtrans_order_id: orderId })
+      .eq('id', userId)
+      .catch(() => {})
 
     return NextResponse.json({
-      token: data.token,
-      redirect_url: data.redirect_url,
+      token: txData.token,
+      redirect_url: txData.redirect_url,
       order_id: orderId,
     })
+
   } catch (error) {
     console.error('Create transaction error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

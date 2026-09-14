@@ -34,8 +34,8 @@ input[type="date"]{color-scheme:dark;}
 
 /* ══ TOPBAR ══ */
 .topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;justify-content:space-between;height:52px;position:sticky;top:0;z-index:300;gap:8px;transition:background .35s;}
-.brand-logo{font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:700;color:var(--gold2);white-space:nowrap;flex-shrink:0;}
-.brand-logo em{font-style:italic;color:var(--gold3);}
+.brand-logo{font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:700;color:#ffffff;white-space:nowrap;flex-shrink:0;}
+.brand-logo em{font-style:italic;color:var(--gold2);}
 .brand-tag{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-left:8px;}
 .page-tabs{display:flex;gap:2px;overflow-x:auto;flex:1;justify-content:center;}
 .page-tabs::-webkit-scrollbar{display:none;}
@@ -1228,8 +1228,8 @@ hr.div{border:none;border-top:1px solid var(--border);margin:14px 0;}
 .auth-brand-top{text-align:center;margin-bottom:36px;opacity:0;animation:authFadeUp .7s ease .1s forwards;}
 .auth-brand-eyebrow{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:4px;text-transform:uppercase;color:var(--gold);display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:18px;}
 .auth-brand-eyebrow::before,.auth-brand-eyebrow::after{content:'';width:40px;height:1px;background:var(--gold-bd);}
-.auth-brand-logo{font-family:'Cormorant Garamond',serif;font-size:clamp(52px,9vw,80px);font-weight:700;line-height:1.1;letter-spacing:-1px;background:linear-gradient(135deg,var(--gold) 0%,var(--gold2) 40%,var(--gold3) 70%,var(--gold2) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;display:inline-block;position:relative;padding:0 4px;}
-.auth-brand-logo em{font-style:italic;}
+.auth-brand-logo{font-family:'Cormorant Garamond',serif;font-size:clamp(52px,9vw,80px);font-weight:700;line-height:1.1;letter-spacing:-1px;color:#ffffff;display:inline-block;position:relative;padding:0 4px;}
+.auth-brand-logo em{font-style:italic;color:var(--gold2);}
 .auth-brand-logo::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.15) 50%,transparent 100%);background-size:200% 100%;animation:authShimmer 3s ease 1.2s infinite;pointer-events:none;}
 @keyframes authShimmer{0%{left:-60%}100%{left:120%}}
 .auth-brand-tagline{font-size:14px;color:var(--text3);margin-top:12px;}

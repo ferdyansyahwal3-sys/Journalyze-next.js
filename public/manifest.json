@@ -2,7 +2,7 @@
   "name": "Journalyze Trading Suite",
   "short_name": "Journalyze",
   "description": "Jurnal trading profesional dengan analisis AI",
-  "start_url": "/",
+  "start_url": "/journal",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#080808",
@@ -30,21 +30,34 @@
       "form_factor": "narrow"
     }
   ],
-  "categories": ["finance", "productivity"],
+  "categories": [
+    "finance",
+    "productivity"
+  ],
   "shortcuts": [
     {
       "name": "Tambah Trade",
       "short_name": "Trade",
       "description": "Input trade baru",
-      "url": "/?page=jurnal",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+      "url": "/journal?page=jurnal",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     },
     {
       "name": "Kalkulator Risiko",
       "short_name": "Risiko",
       "description": "Buka kalkulator risiko",
-      "url": "/?page=risiko",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+      "url": "/journal?page=risiko",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }

@@ -42,7 +42,7 @@
   min-height: 100vh;
   background: var(--bg);
   color: var(--text);
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Cormorant Garamond', serif;
   -webkit-font-smoothing: antialiased;
   background-image:
     linear-gradient(rgba(201,168,76,.03) 1px, transparent 1px),
@@ -67,22 +67,22 @@
 
 /* FIX #1 — Logo sama persis dengan halaman journal */
 .up-nav-logo {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Cormorant Garamond', serif;
   font-size: 22px;
-  font-weight: 800;
-  color: var(--text);
+  font-weight: 700;
+  color: #ffffff;
   text-decoration: none;
-  letter-spacing: -0.8px;
+  letter-spacing: 0;
   display: flex;
   align-items: center;
   gap: 0;
 }
 .up-nav-logo-text {
-  color: var(--text);
+  color: #ffffff;
 }
 .up-nav-logo-em {
-  color: var(--gold);
-  font-style: normal;
+  color: var(--gold2);
+  font-style: italic;
 }
 .up-nav-badge {
   font-family: 'JetBrains Mono', monospace;
@@ -97,7 +97,7 @@
   font-weight: 500;
 }
 .up-nav-back {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Cormorant Garamond', serif;
   color: var(--text3);
   font-size: 13px;
   text-decoration: none;
@@ -160,7 +160,7 @@
   font-style: italic;
 }
 .up-sub {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Cormorant Garamond', serif;
   color: var(--text3);
   font-size: 15px;
   font-weight: 400;
@@ -234,20 +234,22 @@
   margin-bottom: 6px;
 }
 .up-durasi {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Cormorant Garamond', serif;
   color: var(--text3);
   font-size: 13px;
   margin-bottom: 20px;
 }
 .up-harga-coret {
-  font-family: 'Outfit', sans-serif;
-  color: var(--text4);
-  font-size: 14px;
+  font-family: 'Cormorant Garamond', serif;
+  color: #a08040;
+  font-size: 16px;
   text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
   margin-bottom: 6px;
 }
 .up-harga {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Cormorant Garamond', serif;
   color: var(--text);
   font-size: 36px;
   font-weight: 700;
@@ -257,7 +259,7 @@
 }
 .up-card.highlight .up-harga { color: var(--gold); }
 .up-desc {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Cormorant Garamond', serif;
   color: var(--text3);
   font-size: 13px;
   line-height: 1.6;
@@ -293,7 +295,7 @@
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Cormorant Garamond', serif;
   font-size: 14px;
   color: var(--text2);
   line-height: 1.45;
@@ -358,7 +360,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Cormorant Garamond', serif;
   color: var(--text3);
   font-size: 13px;
 }
@@ -367,7 +369,7 @@
 /* ── LICENSE LINK ── */
 .up-license {
   text-align: center;
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Cormorant Garamond', serif;
   color: var(--text3);
   font-size: 13px;
   padding-top: 16px;

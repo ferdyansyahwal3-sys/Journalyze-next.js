@@ -65,17 +65,17 @@
   z-index: 50;
 }
 .co-nav-logo {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Cormorant Garamond', serif;
   font-size: 22px;
-  font-weight: 800;
-  color: var(--text);
+  font-weight: 700;
+  color: #ffffff;
   text-decoration: none;
-  letter-spacing: -0.8px;
+  letter-spacing: 0;
   display: flex;
   align-items: center;
 }
-.co-nav-logo-text { color: var(--text); }
-.co-nav-logo-em   { color: var(--gold); font-style: normal; }
+.co-nav-logo-text { color: #ffffff; }
+.co-nav-logo-em   { color: var(--gold2); font-style: italic; }
 .co-nav-badge {
   font-family: 'JetBrains Mono', monospace;
   font-size: 9px;

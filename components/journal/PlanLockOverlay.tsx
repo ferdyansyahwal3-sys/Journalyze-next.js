@@ -11,7 +11,7 @@ export default function PlanLockOverlay({
   userEmail = '',
 }: PlanLockOverlayProps) {
   const handleUpgrade = () => {
-    window.location.href = `/upgrade${userEmail ? `&email=${encodeURIComponent(userEmail)}` : ''}`;
+    window.location.href = `/upgrade${userEmail ? `?email=${encodeURIComponent(userEmail)}` : ''}`;
   };
 
   return (

@@ -93,21 +93,22 @@ function CheckoutContent() {
 
   // Ambil data user dari Supabase
   useEffect(() => {
-    _sb.auth.getUser().then(({ data: { user: u } }) => {
+    const loadUser = async () => {
+      let { data: { user: u } } = await _sb.auth.getUser();
       if (!u) {
-        router.push('/order');
-        return;
+        const { data: r } = await _sb.auth.refreshSession();
+        u = r?.user || null;
       }
-      _sb.from('profiles')
+      if (!u) { router.push('/order'); return; }
+      const { data } = await _sb.from('profiles')
         .select('display_name, email')
         .eq('id', u.id)
-        .single()
-        .then(({ data }) => {
-          setUserName(data?.display_name || u.email?.split('@')[0] || 'Trader');
-          setUserEmail(data?.email || u.email || '');
-          setAuthChecked(true);
-        });
-    });
+        .single();
+      setUserName(data?.display_name || u.email?.split('@')[0] || 'Trader');
+      setUserEmail(data?.email || u.email || '');
+      setAuthChecked(true);
+    };
+    loadUser();
   }, []);
 
   // Load Midtrans Snap
@@ -139,6 +140,7 @@ function CheckoutContent() {
         body: JSON.stringify({
           paket: paketKey,
           promo_code: promoCode.trim() || null,
+          user_email: userEmail,
         }),
       });
 

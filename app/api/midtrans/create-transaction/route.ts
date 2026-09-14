@@ -11,7 +11,7 @@ const VALID_PAKETS: Record<string, { label: string; nominal: number }> = {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { paket, promo_code } = body
+    const { paket, promo_code, user_email } = body
 
     // Validasi paket
     const paketKey = paket in VALID_PAKETS ? paket : 'pro'
@@ -23,7 +23,12 @@ export async function POST(req: NextRequest) {
     let userPhone: string = ''
 
     // ── Mode A: User sudah login (dari /checkout) ──
-    const { data: { user: sessionUser } } = await _sb.auth.getUser()
+    const sessionUser = user_email 
+      ? await (async () => {
+          const { data } = await _sbAdmin.auth.admin.listUsers()
+          return data?.users?.find(u => u.email === user_email) || null
+        })()
+      : null
 
     if (sessionUser) {
       userId = sessionUser.id
@@ -158,15 +163,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Update lead & profile dengan order ID
-    await _sbAdmin.from('leads')
-      .update({ midtrans_order_id: orderId })
-      .eq('email', userEmail)
-      .catch(() => {})
+    await _sbAdmin.from('leads').update({ midtrans_order_id: orderId }).eq('email', userEmail).then(() => {}).catch(() => {})
 
-    await _sbAdmin.from('profiles')
-      .update({ midtrans_order_id: orderId })
-      .eq('id', userId)
-      .catch(() => {})
+    await _sbAdmin.from('profiles').update({ midtrans_order_id: orderId }).eq('id', userId).then(() => {}).catch(() => {})
 
     return NextResponse.json({
       token: txData.token,
@@ -176,6 +175,7 @@ export async function POST(req: NextRequest) {
 
   } catch (error) {
     console.error('Create transaction error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    const errMsg = error instanceof Error ? error.message : JSON.stringify(error)
+    return NextResponse.json({ error: errMsg }, { status: 500 })
   }
 }

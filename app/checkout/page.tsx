@@ -128,12 +128,9 @@ function CheckoutContent() {
       setErrorMsg('Payment gateway belum siap, tunggu sebentar.');
       return;
     }
-
     setLoading(true);
     setErrorMsg('');
-
     try {
-      // Kirim hanya paket — backend ambil user dari session
       const res = await fetch('/api/midtrans/create-transaction', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -143,15 +140,12 @@ function CheckoutContent() {
           user_email: userEmail,
         }),
       });
-
       const data = await res.json();
-
       if (!res.ok) {
         setErrorMsg(data.error || 'Gagal memproses pembayaran.');
         setLoading(false);
         return;
       }
-
       setLoading(false);
       window.snap.pay(data.token, {
         onSuccess: () => router.push('/journal?payment=success'),
@@ -159,7 +153,6 @@ function CheckoutContent() {
         onError: () => setErrorMsg('Pembayaran gagal. Silakan coba lagi.'),
         onClose: () => {},
       });
-
     } catch {
       setErrorMsg('Terjadi kesalahan. Silakan coba lagi.');
       setLoading(false);
@@ -169,17 +162,18 @@ function CheckoutContent() {
   if (!authChecked) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#080808' }}>
-        <div style={{ color: '#C9A84C', fontSize: 14, fontFamily: 'monospace' }}>Memuat...</div>
+        <div style={{ color: '#C9A84C', fontSize: 14, fontFamily: 'JetBrains Mono, monospace' }}>Memuat...</div>
       </div>
     );
   }
 
   return (
     <div className="co-root">
-      {/* Navbar */}
+      {/* Navbar — FIX #1: logo markup sama dengan halaman journal */}
       <nav className="co-nav">
         <a href="/home" className="co-nav-logo">
-          Journal<em>yze</em>
+          <span className="co-nav-logo-text">Journal</span>
+          <span className="co-nav-logo-em">yze</span>
           <span className="co-nav-badge">v2.0</span>
         </a>
         <a href="/upgrade" className="co-nav-back">← Ganti Paket</a>
@@ -196,30 +190,34 @@ function CheckoutContent() {
         <div className="co-layout">
           {/* LEFT */}
           <div className="co-left">
-            {paket.badge && <div className="co-paket-badge">{paket.badge}</div>}
+            {paket.badge && (
+              <div className="co-paket-badge">{paket.badge}</div>
+            )}
             <div className="co-paket-tag">PAKET MEMBERSHIP</div>
             <h1 className="co-paket-name">{paket.label}</h1>
 
             <div className="co-meta">
               <div className="co-meta-item">
-                <div className="co-meta-label">Masa akses</div>
+                <div className="co-meta-label">Masa Akses</div>
                 <div className="co-meta-value">{paket.durasi}</div>
               </div>
               <div className="co-meta-item">
-                <div className="co-meta-label">Tipe paket</div>
-                <div className="co-meta-value">{paketKey === 'basic' ? 'Fixed Period' : 'Lifetime'}</div>
+                <div className="co-meta-label">Tipe Paket</div>
+                <div className="co-meta-value">
+                  {paketKey === 'basic' ? 'Fixed Period' : 'Lifetime'}
+                </div>
               </div>
             </div>
 
             <div className="co-fitur-title">Yang kamu dapatkan</div>
-            <div className="co-fitur-list">
+            <ul className="co-fitur-list">
               {paket.fitur.map((f) => (
-                <div key={f} className="co-fitur-item">
+                <li key={f} className="co-fitur-item">
                   <span className="co-check">✓</span>
                   <span>{f}</span>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
 
             {/* Trust badges */}
             <div className="co-trust">
@@ -227,9 +225,10 @@ function CheckoutContent() {
                 { icon: '⚡', text: 'Aktivasi otomatis setelah bayar' },
                 { icon: '🔒', text: 'Pembayaran aman via Midtrans' },
                 { icon: '💬', text: 'Support via WhatsApp' },
-              ].map(t => (
+              ].map((t) => (
                 <div key={t.text} className="co-trust-item">
-                  <span>{t.icon}</span><span>{t.text}</span>
+                  <span>{t.icon}</span>
+                  <span>{t.text}</span>
                 </div>
               ))}
             </div>
@@ -239,31 +238,35 @@ function CheckoutContent() {
           <div className="co-right">
             <div className="co-card">
 
-              {/* Sapaan */}
+              {/* FIX #3: Greeting — minimalis, luxury, bukan bulat gradient */}
               <div className="co-greeting">
                 <div className="co-greeting-avatar">
                   {userName.charAt(0).toUpperCase()}
                 </div>
-                <div>
-                  <div className="co-greeting-name">Halo, <span>{userName}</span>! 👋</div>
+                <div className="co-greeting-info">
+                  <div className="co-greeting-name">
+                    Halo, <span>{userName}</span>! 👋
+                  </div>
                   <div className="co-greeting-email">{userEmail}</div>
                 </div>
               </div>
 
-              <div className="co-divider" />
-
-              {/* Harga */}
+              {/* Harga — langsung setelah greeting tanpa divider ganda */}
               <div className="co-total-label">Total Pembayaran</div>
               <div className="co-harga-coret">{paket.hargaCoret}</div>
               <div className="co-harga">{paket.hargaDisp}</div>
               <div className="co-harga-sub">
-                {paketKey === 'basic' ? 'Dibayar sekali untuk akses 3 bulan.' : 'Dibayar sekali untuk akses selamanya.'}
+                {paketKey === 'basic'
+                  ? 'Dibayar sekali untuk akses 3 bulan.'
+                  : 'Dibayar sekali untuk akses selamanya.'}
               </div>
 
               <div className="co-divider" />
 
               {/* Kode promo */}
-              <div className="co-promo-label">Kode Promo <span className="co-optional">(opsional)</span></div>
+              <div className="co-promo-label">
+                Kode Promo <span className="co-optional">(opsional)</span>
+              </div>
               <div className="co-promo-wrap">
                 <input
                   type="text"
@@ -293,7 +296,7 @@ function CheckoutContent() {
                 <div className="co-error">⚠️ {errorMsg}</div>
               )}
 
-              {/* CTA */}
+              {/* CTA — FIX #3: margin-top 24px supaya jauh dari angka */}
               <button
                 className="co-bayar-btn"
                 onClick={handleBayar}
@@ -322,7 +325,7 @@ export default function CheckoutPage() {
   return (
     <Suspense fallback={
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#080808' }}>
-        <div style={{ color: '#C9A84C', fontSize: 14 }}>Memuat...</div>
+        <div style={{ color: '#C9A84C', fontSize: 14, fontFamily: 'JetBrains Mono, monospace' }}>Memuat...</div>
       </div>
     }>
       <CheckoutContent />

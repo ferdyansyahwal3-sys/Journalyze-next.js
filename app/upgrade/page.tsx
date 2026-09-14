@@ -1,35 +1,37 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { useState, Suspense } from 'react';
 import './upgrade.css';
 
-const PAKET_DATA = [
+const PAKETS = [
   {
     key: 'basic',
     label: 'Paket Basic',
+    paketLabel: 'PAKET BASIC',
     durasi: 'Akses 3 Bulan',
-    harga: 99000,
-    hargaDisp: 'Rp 99.000',
     hargaCoret: 'Rp 149.000',
-    deskripsi: 'Cocok untuk trader pemula yang baru mulai journaling.',
+    harga: 'Rp 99.000',
+    desc: 'Cocok untuk trader pemula yang baru mulai journaling.',
+    badge: null,
+    highlight: false,
     fitur: [
       'Akses Journalyze Web App',
       'Kalkulator risiko & lot size',
       'Rekap & analisis trade dasar',
       'Trading plan harian',
     ],
-    badge: null,
-    highlight: false,
   },
   {
     key: 'pro',
     label: 'Paket Pro',
+    paketLabel: 'PAKET PRO',
     durasi: 'Akses Selamanya',
-    harga: 149000,
-    hargaDisp: 'Rp 149.000',
     hargaCoret: 'Rp 297.000',
-    deskripsi: 'Paling populer. Akses lifetime + semua fitur analisis.',
+    harga: 'Rp 149.000',
+    desc: 'Paling populer. Akses lifetime + semua fitur analisis.',
+    badge: '⭐ Paling Populer',
+    highlight: true,
     fitur: [
       'Semua fitur Journalyze Web App',
       'Akses LIFETIME (bukan langganan)',
@@ -40,17 +42,17 @@ const PAKET_DATA = [
       'Konsultasi 1x via WhatsApp',
       'Semua update fitur gratis',
     ],
-    badge: '⭐ Paling Populer',
-    highlight: true,
   },
   {
     key: 'elite',
     label: 'Paket Elite',
+    paketLabel: 'PAKET ELITE',
     durasi: 'Akses Selamanya',
-    harga: 249000,
-    hargaDisp: 'Rp 249.000',
     hargaCoret: 'Rp 497.000',
-    deskripsi: 'Lengkap dengan review journal dan konsultasi personal.',
+    harga: 'Rp 249.000',
+    desc: 'Lengkap dengan review journal dan konsultasi personal.',
+    badge: '🔥 Terlengkap',
+    highlight: false,
     fitur: [
       'Semua fitur Paket Pro',
       'Review journal bulanan (1x/bulan)',
@@ -59,12 +61,11 @@ const PAKET_DATA = [
       'Feedback strategy personal',
       'Prioritas support & update',
     ],
-    badge: '🔥 Terlengkap',
-    highlight: false,
   },
 ];
 
-export default function UpgradePage() {
+function UpgradeContent() {
+  const searchParams = useSearchParams();
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
 
@@ -74,64 +75,65 @@ export default function UpgradePage() {
   };
 
   return (
-    <div className="upgrade-root">
-      {/* Navbar */}
-      <nav className="upgrade-nav">
-        <a href="/home" className="upgrade-nav-logo">
-          Journal<em>yze</em>
-          <span className="upgrade-nav-badge">v2.0</span>
+    <div className="up-root">
+      {/* Navbar — FIX #1: logo markup sama dengan halaman journal */}
+      <nav className="up-nav">
+        <a href="/home" className="up-nav-logo">
+          <span className="up-nav-logo-text">Journal</span>
+          <span className="up-nav-logo-em">yze</span>
+          <span className="up-nav-badge">v2.0</span>
         </a>
-        <a href="/journal" className="upgrade-nav-back">← Kembali ke Jurnal</a>
+        <a href="/home" className="up-nav-back">← Kembali ke Jurnal</a>
       </nav>
 
-      <main className="upgrade-main">
+      <main className="up-main">
         {/* Header */}
-        <div className="upgrade-header">
-          <div className="upgrade-header-tag">
+        <div className="up-header">
+          <div className="up-header-tag">
             <span className="dot" />
-            <span>Pilih Paket yang Tepat</span>
+            Pilih Paket yang Tepat
           </div>
-          <h1 className="upgrade-headline">
+          <h1 className="up-headline">
             Tingkatkan Trading Kamu dengan <em>Journalyze</em>
           </h1>
-          <p className="upgrade-sub">
+          <p className="up-sub">
             Satu kali bayar, akses selamanya. Tidak ada biaya langganan tersembunyi.
           </p>
         </div>
 
-        {/* Paket Grid */}
-        <div className="upgrade-grid">
-          {PAKET_DATA.map((p) => (
+        {/* Grid — FIX #2: lebih lebar, padding lebih besar */}
+        <div className="up-grid">
+          {PAKETS.map((p) => (
             <div
               key={p.key}
-              className={`upgrade-card${p.highlight ? ' highlight' : ''}`}
+              className={`up-card${p.highlight ? ' highlight' : ''}`}
             >
-              {p.badge && (
-                <div className="upgrade-badge">{p.badge}</div>
-              )}
+              {p.badge && <div className="up-badge">{p.badge}</div>}
 
-              <div className="upgrade-card-top">
-                <div className="upgrade-paket-label">{p.label}</div>
-                <div className="upgrade-durasi">{p.durasi}</div>
-                <div className="upgrade-harga-coret">{p.hargaCoret}</div>
-                <div className="upgrade-harga">{p.hargaDisp}</div>
-                <p className="upgrade-desc">{p.deskripsi}</p>
+              <div className="up-card-top">
+                <div className="up-paket-label">{p.paketLabel}</div>
+                <div className="up-durasi">{p.durasi}</div>
+                <div className="up-harga-coret">{p.hargaCoret}</div>
+                <div className="up-harga">{p.harga}</div>
+                <p className="up-desc">{p.desc}</p>
               </div>
 
-              <div className="upgrade-divider" />
+              <div className="up-divider" />
 
-              <div className="upgrade-fitur">
-                <div className="upgrade-fitur-title">Yang kamu dapatkan:</div>
-                {p.fitur.map((f) => (
-                  <div key={f} className="upgrade-fitur-item">
-                    <span className="upgrade-check">✓</span>
-                    <span>{f}</span>
-                  </div>
-                ))}
+              <div className="up-fitur">
+                <div className="up-fitur-title">Yang kamu dapatkan:</div>
+                <ul className="up-fitur-list">
+                  {p.fitur.map((f) => (
+                    <li key={f} className="up-fitur-item">
+                      <span className="up-check">✓</span>
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
 
               <button
-                className={`upgrade-btn${p.highlight ? ' gold' : ''}`}
+                className={`up-btn${p.highlight ? ' gold' : ''}`}
                 onClick={() => handlePilih(p.key)}
                 disabled={loading === p.key}
               >
@@ -142,26 +144,38 @@ export default function UpgradePage() {
         </div>
 
         {/* Trust */}
-        <div className="upgrade-trust">
+        <div className="up-trust">
           {[
             { icon: '⚡', text: 'Aktivasi otomatis setelah bayar' },
             { icon: '🔒', text: 'Pembayaran aman via Midtrans' },
             { icon: '♾️', text: 'Lifetime — bayar sekali, pakai selamanya' },
             { icon: '💬', text: 'Support via WhatsApp' },
           ].map((t) => (
-            <div key={t.text} className="upgrade-trust-item">
+            <div key={t.text} className="up-trust-item">
               <span>{t.icon}</span>
               <span>{t.text}</span>
             </div>
           ))}
         </div>
 
-        {/* Punya kode lisensi */}
-        <div className="upgrade-license">
+        {/* Lisensi */}
+        <div className="up-license">
           Punya kode lisensi dari Lynk.id/Scalev?{' '}
           <a href="/delivery">Aktivasi di sini</a>
         </div>
       </main>
     </div>
+  );
+}
+
+export default function UpgradePage() {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#080808' }}>
+        <div style={{ color: '#C9A84C', fontSize: 14, fontFamily: 'JetBrains Mono, monospace' }}>Memuat...</div>
+      </div>
+    }>
+      <UpgradeContent />
+    </Suspense>
   );
 }

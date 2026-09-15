@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
 
       // Cek email sudah terdaftar
       const { data: existingUsers } = await _sbAdmin.auth.admin.listUsers()
-      const existingUser = existingUsers?.users?.find(u => u.email === userEmail)
+      const existingUser = existingUsers?.users?.find((u: { email?: string; id: string }) => u.email === userEmail)
 
       if (existingUser) {
         userId = existingUser.id

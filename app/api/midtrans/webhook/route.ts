@@ -68,14 +68,17 @@ export async function POST(req: NextRequest) {
       // 2. Tentukan paket dari order atau dari nominal
       const paketKey = planKeyFromOrder || resolvePlanKey(gross_amount ?? '0')
 
-      // 3. Update pending_plan saja — JANGAN update plan langsung
-      //    Admin yang nanti konfirmasi via admin panel
+      // 3. Langsung aktivasi — set admin_verified true otomatis
       const { data: profile, error: updateError } = await supabaseAdmin
         .from('profiles')
         .update({
-          pending_plan:      paketKey,
+          plan:              'premium',
+          plan_type:         paketKey,
+          admin_verified:    true,
+          pending_plan:      null,
+          is_activated:      true,
+          plan_activated_at: new Date().toISOString(),
           midtrans_order_id: order_id,
-          // admin_verified tetap false sampai admin konfirmasi
         })
         .eq('id', userId)
         .select('email, display_name')

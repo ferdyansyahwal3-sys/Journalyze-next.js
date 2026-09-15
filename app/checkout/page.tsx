@@ -90,6 +90,7 @@ function CheckoutContent() {
   const [errorMsg, setErrorMsg] = useState('');
   const [promoCode, setPromoCode] = useState('');
   const [authChecked, setAuthChecked] = useState(false);
+  const [isPremium, setIsPremium] = useState(false);
 
   // Ambil data user dari Supabase
   useEffect(() => {
@@ -101,11 +102,13 @@ function CheckoutContent() {
       }
       if (!u) { router.push('/order'); return; }
       const { data } = await _sb.from('profiles')
-        .select('display_name, email')
+        .select('display_name, email, admin_verified, plan_type')
         .eq('id', u.id)
         .single();
       setUserName(data?.display_name || u.email?.split('@')[0] || 'Trader');
       setUserEmail(data?.email || u.email || '');
+      const verified = data?.admin_verified === true && !!data?.plan_type;
+      setIsPremium(verified);
       setAuthChecked(true);
     };
     loadUser();
@@ -292,27 +295,32 @@ function CheckoutContent() {
                 </div>
               </div>
 
-              {errorMsg && (
-                <div className="co-error">⚠️ {errorMsg}</div>
+              {isPremium ? (
+                <div className="co-error" style={{ borderColor: 'rgba(201,168,76,0.3)', color: '#C9A84C', background: 'rgba(201,168,76,0.08)' }}>
+                  ⭐ Akun ini sudah premium. Tidak perlu bayar lagi.
+                </div>
+              ) : (
+                <>
+                  {errorMsg && (
+                    <div className="co-error">⚠️ {errorMsg}</div>
+                  )}
+                  <button
+                    className="co-bayar-btn"
+                    onClick={handleBayar}
+                    disabled={loading || !snapLoaded}
+                  >
+                    {loading ? (
+                      <><span className="co-spinner" /> Memproses...</>
+                    ) : (
+                      <>💳 Bayar Sekarang — {paket.hargaDisp}</>
+                    )}
+                  </button>
+                  <div className="co-secure">
+                    <span>🔒</span>
+                    <span>Akses terbuka otomatis setelah pembayaran diterima. Tidak ada biaya tersembunyi.</span>
+                  </div>
+                </>
               )}
-
-              {/* CTA — FIX #3: margin-top 24px supaya jauh dari angka */}
-              <button
-                className="co-bayar-btn"
-                onClick={handleBayar}
-                disabled={loading || !snapLoaded}
-              >
-                {loading ? (
-                  <><span className="co-spinner" /> Memproses...</>
-                ) : (
-                  <>💳 Bayar Sekarang — {paket.hargaDisp}</>
-                )}
-              </button>
-
-              <div className="co-secure">
-                <span>🔒</span>
-                <span>Akses terbuka otomatis setelah pembayaran diterima. Tidak ada biaya tersembunyi.</span>
-              </div>
             </div>
           </div>
         </div>

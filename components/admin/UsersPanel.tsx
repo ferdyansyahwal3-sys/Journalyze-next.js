@@ -1,12 +1,18 @@
 'use client';
 
 // components/admin/UsersPanel.tsx
-// Fitur: list semua user dari tabel profiles, ubah plan, search/filter
+// Fitur: list semua user, ubah plan, badge pending, tombol aktivasi admin
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useAdminStore, PAGE_SIZE } from '@/store/useAdminStore';
 import type { UserProfile, UserPlan } from '@/store/useAdminStore';
 import { _sbAdmin } from '@/lib/supabaseClient';
+
+// ── Extended type untuk pending activation ───────────────────
+interface UserProfileExtended extends UserProfile {
+  pending_plan: string | null;
+  admin_verified: boolean;
+}
 
 // ── Plan config ──────────────────────────────────────────────
 const PLANS: UserPlan[] = ['free', 'basic', 'pro', 'elite'];
@@ -35,6 +41,97 @@ function PlanBadge({ plan }: { plan: UserPlan }) {
   );
 }
 
+// ── Pending Activation Badge ─────────────────────────────────
+function PendingBadge({ pendingPlan }: { pendingPlan: string }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      borderRadius: 99, padding: '4px 11px',
+      fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap',
+      fontFamily: "'JetBrains Mono', monospace",
+      color: '#FBBF24',
+      background: 'rgba(251,191,36,0.1)',
+      border: '1px solid rgba(251,191,36,0.35)',
+      animation: 'pendingPulse 2s ease-in-out infinite',
+    }}>
+      <span style={{ fontSize: 10 }}>⏳</span>
+      MENUNGGU — {pendingPlan.toUpperCase()}
+    </span>
+  );
+}
+
+// ── Activate Now Button ──────────────────────────────────────
+function ActivateButton({
+  userId,
+  pendingPlan,
+  onActivated,
+}: {
+  userId: string;
+  pendingPlan: string;
+  onActivated: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const showToast = useAdminStore((s) => s.showToast);
+
+  const handleActivate = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { error } = await _sbAdmin
+        .from('profiles')
+        .update({
+          plan:             'premium',
+          plan_type:        pendingPlan,
+          admin_verified:   true,
+          pending_plan:     null,
+          is_activated:     true,
+          plan_activated_at: new Date().toISOString(),
+        })
+        .eq('id', userId);
+
+      if (error) throw error;
+      showToast(`✅ Akun diaktifkan — paket ${pendingPlan.toUpperCase()}`, 'success');
+      onActivated();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Gagal aktivasi';
+      showToast(msg, 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [userId, pendingPlan, onActivated, showToast]);
+
+  return (
+    <button
+      onClick={handleActivate}
+      disabled={loading}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        background: loading ? 'rgba(201,168,76,0.2)' : '#C9A84C',
+        color: loading ? '#C9A84C' : '#000',
+        border: '1px solid #C9A84C',
+        borderRadius: 8,
+        padding: '6px 14px',
+        fontSize: 11, fontWeight: 700,
+        fontFamily: "'JetBrains Mono', monospace",
+        cursor: loading ? 'not-allowed' : 'pointer',
+        transition: 'all 0.15s ease',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {loading ? (
+        <span style={{
+          width: 10, height: 10,
+          border: '2px solid rgba(201,168,76,0.3)',
+          borderTopColor: '#C9A84C',
+          borderRadius: '50%',
+          animation: 'spin .7s linear infinite',
+          display: 'inline-block',
+        }} />
+      ) : '⚡'}
+      {loading ? 'Mengaktifkan...' : 'Aktivasi Sekarang'}
+    </button>
+  );
+}
+
 // ── Plan Selector (dropdown inline) ─────────────────────────
 function PlanSelector({
   userId, currentPlan, onChanged,
@@ -48,14 +145,30 @@ function PlanSelector({
     if (newPlan === currentPlan) return;
     setLoading(true);
     try {
+      // Admin override manual — set admin_verified true sekaligus
+      const updates: Record<string, unknown> = { plan: newPlan };
+      if (newPlan !== 'free') {
+        updates.plan_type      = newPlan;
+        updates.admin_verified = true;
+        updates.pending_plan   = null;
+        updates.is_activated   = true;
+        updates.plan_activated_at = new Date().toISOString();
+      } else {
+        // downgrade ke free
+        updates.plan_type      = null;
+        updates.admin_verified = false;
+        updates.pending_plan   = null;
+        updates.is_activated   = false;
+      }
+
       const { error } = await _sbAdmin
         .from('profiles')
-        .update({ plan: newPlan })
+        .update(updates)
         .eq('id', userId);
       if (error) throw error;
       updateUserPlan(userId, newPlan);
       onChanged(newPlan);
-      showToast(`Plan berhasil diubah ke ${newPlan.toUpperCase()}`, 'success');
+      showToast(`Plan diubah ke ${newPlan.toUpperCase()}`, 'success');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Gagal update plan';
       showToast(msg, 'error');
@@ -110,7 +223,6 @@ function PlanSelector({
   );
 }
 
-
 // ── Toggle Activated Button ──────────────────────────────────
 function ToggleActivated({ userId, isActivated }: { userId: string; isActivated: boolean }) {
   const [loading, setLoading] = useState(false);
@@ -154,7 +266,7 @@ function ToggleActivated({ userId, isActivated }: { userId: string; isActivated:
 function SkeletonRow() {
   return (
     <tr>
-      {[180, 120, 80, 90, 100, 80].map((w, i) => (
+      {[180, 120, 80, 140, 90, 100, 80].map((w, i) => (
         <td key={i} style={{ padding: '14px 16px' }}>
           <div style={{
             height: 12, width: w, borderRadius: 6,
@@ -176,8 +288,9 @@ export default function UsersPanel({ active }: { active: boolean }) {
   } = useAdminStore();
 
   const [localPlans, setLocalPlans] = useState<Record<string, UserPlan>>({});
+  // State lokal untuk track pending_plan per user (setelah aktivasi)
+  const [localPending, setLocalPending] = useState<Record<string, string | null>>({});
 
-  // Load users on first activation
   useEffect(() => {
     if (!active || usersLoaded) return;
     loadUsers();
@@ -189,10 +302,13 @@ export default function UsersPanel({ active }: { active: boolean }) {
     try {
       const { data, error } = await _sbAdmin
         .from('profiles')
-        .select('id, email, display_name, plan, is_activated, created_at')
+        .select('id, email, display_name, plan, is_activated, created_at, pending_plan, admin_verified')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      setAllUsers(((data ?? []) as UserProfile[]).map(u => ({ ...u, plan: (u.plan ?? 'free') as UserPlan })));
+      setAllUsers(((data ?? []) as UserProfileExtended[]).map(u => ({
+        ...u,
+        plan: (u.plan ?? 'free') as UserPlan,
+      })));
       setUsersLoaded(true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Gagal memuat users';
@@ -203,13 +319,20 @@ export default function UsersPanel({ active }: { active: boolean }) {
 
   const handleRefresh = () => {
     setUsersLoaded(false);
+    setLocalPending({});
     loadUsers();
   };
 
-  // Derived: filtered + paginated
+  // Count pending aktivasi
+  const pendingCount = useMemo(() => {
+    return (allUsers as UserProfileExtended[]).filter(
+      u => (localPending[u.id] !== undefined ? localPending[u.id] : u.pending_plan) && !u.admin_verified
+    ).length;
+  }, [allUsers, localPending]);
+
   const filtered = useMemo(() => {
     const q = usersSearch.trim().toLowerCase();
-    return allUsers.filter((u) => {
+    return (allUsers as UserProfileExtended[]).filter((u) => {
       const matchSearch = !q ||
         u.email?.toLowerCase().includes(q) ||
         (u.display_name ?? '').toLowerCase().includes(q);
@@ -222,10 +345,9 @@ export default function UsersPanel({ active }: { active: boolean }) {
   const safePage = Math.min(usersPage, totalPages);
   const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
-  // Plan counts for stats
   const planCounts = useMemo(() => {
     const counts = { free: 0, basic: 0, pro: 0, elite: 0 };
-    allUsers.forEach((u) => { if (u.plan in counts) counts[u.plan]++; });
+    allUsers.forEach((u) => { if (u.plan in counts) counts[u.plan as keyof typeof counts]++; });
     return counts;
   }, [allUsers]);
 
@@ -241,35 +363,53 @@ export default function UsersPanel({ active }: { active: boolean }) {
     <div className="main">
       {/* ── Stats mini bar ── */}
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 24,
+        display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 24,
       }}>
         {[
-          { label: 'TOTAL USERS', val: allUsers.length, color: 'var(--text)' },
-          { label: 'FREE',  val: planCounts.free,  color: PLAN_META.free.color  },
-          { label: 'BASIC', val: planCounts.basic, color: PLAN_META.basic.color },
-          { label: 'PRO',   val: planCounts.pro,   color: PLAN_META.pro.color   },
-          { label: 'ELITE', val: planCounts.elite, color: PLAN_META.elite.color },
+          { label: 'TOTAL USERS', val: allUsers.length,    color: 'var(--text)' },
+          { label: 'FREE',        val: planCounts.free,    color: PLAN_META.free.color  },
+          { label: 'BASIC',       val: planCounts.basic,   color: PLAN_META.basic.color },
+          { label: 'PRO',         val: planCounts.pro,     color: PLAN_META.pro.color   },
+          { label: 'ELITE',       val: planCounts.elite,   color: PLAN_META.elite.color },
+          { label: '⏳ PENDING',  val: pendingCount,       color: '#FBBF24'             },
         ].map((s) => (
           <div key={s.label} className="stat-card" style={{ padding: '16px 20px' }}>
             <div className="stat-lbl">{s.label}</div>
-            <div className="stat-val" style={{ fontSize: 32, color: s.color }}>{s.val}</div>
+            <div className="stat-val" style={{ fontSize: 28, color: s.color }}>{s.val}</div>
           </div>
         ))}
       </div>
+
+      {/* ── Alert banner kalau ada pending ── */}
+      {pendingCount > 0 && (
+        <div style={{
+          background: 'rgba(251,191,36,0.07)',
+          border: '1px solid rgba(251,191,36,0.25)',
+          borderRadius: 10,
+          padding: '12px 18px',
+          marginBottom: 20,
+          display: 'flex', alignItems: 'center', gap: 10,
+          fontSize: 13, color: '#FBBF24',
+        }}>
+          <span style={{ fontSize: 18 }}>⚡</span>
+          <span>
+            Ada <strong>{pendingCount} pembayaran</strong> yang menunggu aktivasi manual.
+            Scroll ke bawah untuk melihat dan mengaktifkan.
+          </span>
+        </div>
+      )}
 
       {/* ── Table section ── */}
       <div className="section">
         <div className="section-head">
           <span className="section-title">👥 User Management</span>
           <div className="filter-bar">
-            {/* Search */}
             <input
               className="filter-input"
               placeholder="🔍 Cari email atau nama..."
               value={usersSearch}
               onChange={(e) => setUsersSearch(e.target.value)}
             />
-            {/* Plan filter */}
             <select
               className="filter-select"
               value={usersPlanFilter}
@@ -280,7 +420,6 @@ export default function UsersPanel({ active }: { active: boolean }) {
                 <option key={p} value={p}>{PLAN_META[p].label}</option>
               ))}
             </select>
-            {/* Refresh */}
             <button className="refresh-btn" onClick={handleRefresh}>
               ↻ Refresh
             </button>
@@ -294,6 +433,7 @@ export default function UsersPanel({ active }: { active: boolean }) {
                 <th>EMAIL</th>
                 <th>NAMA</th>
                 <th>PLAN</th>
+                <th>PENDING / AKTIVASI</th>
                 <th>UBAH PLAN</th>
                 <th>STATUS</th>
                 <th>BERGABUNG</th>
@@ -304,7 +444,7 @@ export default function UsersPanel({ active }: { active: boolean }) {
                 Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
               ) : paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={6}>
+                  <td colSpan={7}>
                     <div className="empty-state">
                       {usersSearch || usersPlanFilter !== 'all'
                         ? '🔍 Tidak ada user yang cocok dengan filter.'
@@ -314,33 +454,78 @@ export default function UsersPanel({ active }: { active: boolean }) {
                 </tr>
               ) : (
                 paginated.map((user) => {
+                  const extUser = user as UserProfileExtended;
                   const displayPlan = localPlans[user.id] ?? user.plan;
+
+                  // Gunakan localPending untuk reflect setelah aktivasi tanpa reload
+                  const currentPending = localPending[user.id] !== undefined
+                    ? localPending[user.id]
+                    : extUser.pending_plan;
+
+                  const hasPending = !!currentPending && !extUser.admin_verified;
+
                   return (
-                    <tr key={user.id}>
+                    <tr
+                      key={user.id}
+                      style={hasPending ? {
+                        background: 'rgba(251,191,36,0.04)',
+                        borderLeft: '2px solid rgba(251,191,36,0.4)',
+                      } : undefined}
+                    >
                       {/* Email */}
                       <td>
                         <span className="email-text" title={user.email}>
                           {user.email || '-'}
                         </span>
                       </td>
+
                       {/* Nama */}
                       <td style={{ fontSize: 13, color: 'var(--text)' }}>
                         {user.display_name || <span style={{ color: 'var(--text3)', fontStyle: 'italic' }}>—</span>}
                       </td>
+
                       {/* Badge plan saat ini */}
                       <td><PlanBadge plan={displayPlan} /></td>
-                      {/* Selector ubah plan */}
+
+                      {/* Kolom Pending / Aktivasi */}
+                      <td>
+                        {hasPending ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <PendingBadge pendingPlan={currentPending!} />
+                            <ActivateButton
+                              userId={user.id}
+                              pendingPlan={currentPending!}
+                              onActivated={() => {
+                                // Update lokal tanpa reload
+                                setLocalPending(prev => ({ ...prev, [user.id]: null }));
+                                setLocalPlans(prev => ({ ...prev, [user.id]: currentPending as UserPlan }));
+                                // Update admin_verified di object (workaround tanpa reload)
+                                extUser.admin_verified = true;
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--text3)', fontSize: 11 }}>—</span>
+                        )}
+                      </td>
+
+                      {/* Selector override plan manual */}
                       <td>
                         <PlanSelector
                           userId={user.id}
                           currentPlan={displayPlan}
-                          onChanged={(p) => setLocalPlans((prev) => ({ ...prev, [user.id]: p }))}
+                          onChanged={(p) => {
+                            setLocalPlans((prev) => ({ ...prev, [user.id]: p }));
+                            setLocalPending((prev) => ({ ...prev, [user.id]: null }));
+                          }}
                         />
                       </td>
+
                       {/* Status aktivasi */}
                       <td>
                         <ToggleActivated userId={user.id} isActivated={user.is_activated} />
                       </td>
+
                       {/* Tanggal */}
                       <td className="date-text">{formatDate(user.created_at)}</td>
                     </tr>
@@ -383,11 +568,14 @@ export default function UsersPanel({ active }: { active: boolean }) {
         )}
       </div>
 
-      {/* ── Pulse animation ── */}
       <style>{`
         @keyframes pulse {
           0%, 100% { opacity: .4; }
           50% { opacity: .9; }
+        }
+        @keyframes pendingPulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.6; }
         }
       `}</style>
     </div>

@@ -25,10 +25,10 @@ export function useJournalAuth() {
   const onAuthSuccess = useCallback(
     async (user: NonNullable<Awaited<ReturnType<typeof _sb.auth.getUser>>['data']['user']>) => {
       try {
-        // Ambil kolom profiles — ditambah plan & plan_type
+        // Ambil kolom lengkap termasuk admin_verified & plan_type
         const { data: prof, error: profErr } = await _sb
           .from('profiles')
-          .select('is_blocked, display_name, notif_nickname, plan')
+          .select('is_blocked, display_name, notif_nickname, plan, plan_type, admin_verified')
           .eq('id', user.id)
           .maybeSingle();
 
@@ -51,20 +51,48 @@ export function useJournalAuth() {
           }
         }
 
-        // ── Set plan ke store ──
-        // Kolom `plan` di DB: 'free' | 'basic' | 'pro' | 'elite'
-        // Fallback ke 'free' kalau null/undefined
-        const rawPlan = (prof?.plan as string | null | undefined) ?? 'free';
-        const validPlans: UserPlan[] = ['free', 'basic', 'pro', 'elite'];
-        const resolvedPlan: UserPlan = validPlans.includes(rawPlan as UserPlan)
-          ? (rawPlan as UserPlan)
-          : 'free';
+        // ── Resolve plan dengan admin_verified sebagai gate ──
+        //
+        // Alur:
+        //   1. Cek admin_verified — ini sumber kebenaran utama
+        //   2. Kalau false  → user = free (tidak peduli kolom plan)
+        //   3. Kalau true   → resolve dari plan_type
+        //
+        // Kenapa bukan dari kolom `plan`?
+        //   Kolom `plan` hanya di-update webhook, tapi webhook bisa salah atau bypass.
+        //   admin_verified = true hanya di-set manual oleh admin → lebih aman.
+
+        const isAdminVerified = prof?.admin_verified === true;
+
+        let resolvedPlan: UserPlan = 'free';
+
+        if (isAdminVerified) {
+          const planType = (prof?.plan_type as string | null | undefined) ?? null;
+          const validPlans: UserPlan[] = ['free', 'basic', 'pro', 'elite'];
+
+          if (planType && validPlans.includes(planType as UserPlan)) {
+            resolvedPlan = planType as UserPlan;
+          } else {
+            // admin_verified true tapi plan_type null — anggap basic (edge case)
+            resolvedPlan = 'basic';
+            console.warn('[Journalyze] admin_verified=true but plan_type is null, defaulting to basic');
+          }
+        } else {
+          // admin_verified false atau null → paksa free
+          // Ini cover kasus:
+          //   - User baru bayar, webhook sudah jalan, tapi admin belum konfirmasi
+          //   - Kolom plan mungkin sudah 'premium' tapi admin belum verify
+          resolvedPlan = 'free';
+
+          if (prof?.plan === 'premium') {
+            console.info('[Journalyze] plan=premium tapi admin_verified=false → override ke free');
+          }
+        }
 
         setPlan(resolvedPlan);
 
       } catch (e: any) {
         console.warn('[Journalyze] profiles check skip:', e.message);
-        // Default ke free kalau gagal fetch
         setPlan('free');
       }
 

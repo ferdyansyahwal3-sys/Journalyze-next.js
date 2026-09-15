@@ -23,10 +23,14 @@ export async function POST(req: NextRequest) {
     let userPhone: string = ''
 
     // ── Mode A: User sudah login (dari /checkout) ──
-    const sessionUser = user_email 
+    const sessionUser = user_email
       ? await (async () => {
-          const { data } = await _sbAdmin.auth.admin.listUsers()
-          return (data?.users ?? []).find((u: { email?: string; id: string }) => u.email === user_email) ?? null
+          const { data } = await _sbAdmin
+            .from('profiles')
+            .select('id, email, display_name, phone, plan, admin_verified, plan_type')
+            .eq('email', user_email)
+            .maybeSingle()
+          return data ?? null
         })()
       : null
 
@@ -34,19 +38,12 @@ export async function POST(req: NextRequest) {
       userId = sessionUser.id
       userEmail = sessionUser.email || ''
 
-      // Ambil data profile
-      const { data: profile } = await _sbAdmin
-        .from('profiles')
-        .select('display_name, phone, plan')
-        .eq('id', userId)
-        .single()
-
-      if (profile?.plan === 'premium') {
+      if (sessionUser.admin_verified === true && sessionUser.plan_type) {
         return NextResponse.json({ error: 'Akun ini sudah premium.' }, { status: 409 })
       }
 
-      userName = profile?.display_name || userEmail.split('@')[0]
-      userPhone = profile?.phone || ''
+      userName = sessionUser.display_name || userEmail.split('@')[0]
+      userPhone = sessionUser.phone || ''
 
     } else {
       // ── Mode B: User baru (dari /order) ──

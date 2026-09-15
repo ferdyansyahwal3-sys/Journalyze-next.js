@@ -1,15 +1,25 @@
 'use client'
 
 // store/useAdminStore.ts
-// Extended: tambah tab 'pixel' untuk PixelPanel
 import { create } from 'zustand';
 import type { LicenseKey, PendingAction, UserAnalytics } from '@/lib/types';
 
 export const PAGE_SIZE = 20;
 
 type AuthStatus = 'checking' | 'loggedOut' | 'loggedIn';
-type Tab = 'keys' | 'analytics' | 'pixel';
+type Tab = 'keys' | 'analytics' | 'pixel' | 'users';
 type Toast = { msg: string; type: 'success' | 'error' | ''; id: number } | null;
+
+export type UserPlan = 'free' | 'basic' | 'pro' | 'elite';
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  display_name: string | null;
+  plan: UserPlan;
+  is_activated: boolean;
+  created_at: string;
+}
 
 interface AdminState {
   // auth
@@ -47,6 +57,19 @@ interface AdminState {
   allUserData: UserAnalytics[];
   setAnalyticsLoaded: (v: boolean) => void;
   setAllUserData: (u: UserAnalytics[]) => void;
+
+  // users
+  allUsers: UserProfile[];
+  usersLoaded: boolean;
+  usersSearch: string;
+  usersPlanFilter: 'all' | UserPlan;
+  usersPage: number;
+  setAllUsers: (u: UserProfile[]) => void;
+  setUsersLoaded: (v: boolean) => void;
+  setUsersSearch: (q: string) => void;
+  setUsersPlanFilter: (f: 'all' | UserPlan) => void;
+  setUsersPage: (p: number) => void;
+  updateUserPlan: (id: string, plan: UserPlan) => void;
 }
 
 export const useAdminStore = create<AdminState>((set) => ({
@@ -85,4 +108,20 @@ export const useAdminStore = create<AdminState>((set) => ({
   allUserData: [],
   setAnalyticsLoaded: (analyticsLoaded) => set({ analyticsLoaded }),
   setAllUserData: (allUserData) => set({ allUserData }),
+
+  // users
+  allUsers: [],
+  usersLoaded: false,
+  usersSearch: '',
+  usersPlanFilter: 'all',
+  usersPage: 1,
+  setAllUsers: (allUsers) => set({ allUsers }),
+  setUsersLoaded: (usersLoaded) => set({ usersLoaded }),
+  setUsersSearch: (usersSearch) => set({ usersSearch, usersPage: 1 }),
+  setUsersPlanFilter: (usersPlanFilter) => set({ usersPlanFilter, usersPage: 1 }),
+  setUsersPage: (usersPage) => set({ usersPage }),
+  updateUserPlan: (id, plan) =>
+    set((s) => ({
+      allUsers: s.allUsers.map((u) => (u.id === id ? { ...u, plan } : u)),
+    })),
 }));

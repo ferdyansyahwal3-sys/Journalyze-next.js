@@ -8,7 +8,7 @@ import { useJournalStore } from '@/store/useJournalStore';
 export default function PaymentSuccessModal() {
   const [visible, setVisible] = useState(false);
   const router = useRouter();
-  const setUserPlan = useJournalStore((s) => s.setUserPlan);
+  
   const showToast = useJournalStore((s) => s.showToast);
 
   useEffect(() => {
@@ -24,7 +24,7 @@ export default function PaymentSuccessModal() {
 
   const handleStart = () => {
     // Upgrade plan di store (webhook sudah update DB, tinggal update UI)
-    setUserPlan('pro');
+    
     showToast('🎉 Selamat datang di Journalyze Premium!', 'success');
     setVisible(false);
     // Reload halaman biar data real dari Supabase ke-load

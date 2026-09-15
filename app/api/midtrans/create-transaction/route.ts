@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     const sessionUser = user_email 
       ? await (async () => {
           const { data } = await _sbAdmin.auth.admin.listUsers()
-          return data?.users?.find(u => u.email === user_email) || null
+          return (data?.users ?? []).find((u: { email?: string; id: string }) => u.email === user_email) ?? null
         })()
       : null
 
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
         phone: userPhone,
         promo_code: promo_code || null,
         status: 'pending',
-      }).catch(e => console.warn('Lead insert:', e.message))
+      })
 
       // Cek email sudah terdaftar
       const { data: existingUsers } = await _sbAdmin.auth.admin.listUsers()
@@ -163,9 +163,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Update lead & profile dengan order ID
-    await _sbAdmin.from('leads').update({ midtrans_order_id: orderId }).eq('email', userEmail).then(() => {}).catch(() => {})
+    await _sbAdmin.from('leads').update({ midtrans_order_id: orderId }).eq('email', userEmail)
 
-    await _sbAdmin.from('profiles').update({ midtrans_order_id: orderId }).eq('id', userId).then(() => {}).catch(() => {})
+    await _sbAdmin.from('profiles').update({ midtrans_order_id: orderId }).eq('id', userId)
 
     return NextResponse.json({
       token: txData.token,

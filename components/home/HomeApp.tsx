@@ -1248,18 +1248,6 @@ export default function HomeApp() {
         <button className="pt-close" onClick={()=>setToastVisible(false)}>✕</button>
       </div>
 
-      {/* ── STICKY MOBILE CTA ── */}
-      <div className="sticky-mobile-cta">
-        <div className="sticky-cta-inner">
-          <div className="sticky-price">
-            <div className="sp-fake">Rp 297.000</div>
-            <div className="sp-real">Rp 149K</div>
-          </div>
-          <a href={ctaOrder('pro')} className="sticky-btn">
-            <span>⚡</span><span>Pesan Sekarang</span>
-          </a>
-        </div>
-      </div>
     </>
   );
 }

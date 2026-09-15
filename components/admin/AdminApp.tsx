@@ -1,5 +1,4 @@
 // components/admin/AdminApp.tsx
-// Extended: tambah PixelPanel untuk tab 'pixel'
 'use client';
 
 import { useAdminStore } from '@/store/useAdminStore';
@@ -8,6 +7,7 @@ import Topbar from './Topbar';
 import KeysPanel from './KeysPanel';
 import AnalyticsPanel from './AnalyticsPanel';
 import PixelPanel from './PixelPanel';
+import UsersPanel from './UsersPanel';
 import ConfirmModal from './ConfirmModal';
 import Toast from './Toast';
 
@@ -25,6 +25,7 @@ export default function AdminApp() {
       <KeysPanel active={activeTab === 'keys'} />
       <AnalyticsPanel active={activeTab === 'analytics'} />
       <PixelPanel active={activeTab === 'pixel'} />
+      <UsersPanel active={activeTab === 'users'} />
       <ConfirmModal />
       <Toast />
     </>

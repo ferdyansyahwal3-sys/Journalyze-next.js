@@ -1,4 +1,4 @@
-// components/admin/Topbar.tsx — tambah tab Pixel
+// components/admin/Topbar.tsx
 'use client';
 
 import { useAdminStore } from '@/store/useAdminStore';
@@ -47,6 +47,12 @@ export default function Topbar() {
           onClick={() => setActiveTab('pixel')}
         >
           📡 Pixel Tracking
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
+          onClick={() => setActiveTab('users')}
+        >
+          👥 User Management
         </button>
       </div>
     </>

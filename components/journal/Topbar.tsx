@@ -1,21 +1,25 @@
 // components/journal/Topbar.tsx
 'use client';
 
+import React from 'react';
+import {
+  House, Scales, CalendarBlank, ClipboardText, Funnel,
+  CalendarDots, ChartBar, Bell, BellSlash, Moon, Sun
+} from '@phosphor-icons/react';
 import { useJournalStore, JournalPage } from '@/store/useJournalStore';
 import { useJournalAuth } from '@/hooks/useJournalAuth';
 
-const PAGE_TABS: { id: JournalPage; label: string }[] = [
-  { id: 'home',    label: '🏠 Home' },
-  { id: 'risk',    label: '⚖️ Risiko' },
-  { id: 'plan',    label: '📅 Plan' },
-  { id: 'data',    label: '📋 Jurnal' },
-  { id: 'filter',  label: '🔍 Filter' },
-  { id: 'weekly',  label: '📆 Mingguan' },
-  { id: 'monthly', label: '📊 Bulanan' },
-  { id: 'news',    label: '📰 News' },
+const PAGE_TABS: { id: JournalPage; label: string; icon: React.ReactNode }[] = [
+  { id: 'home',    label: 'Home',     icon: <House size={13} /> },
+  { id: 'risk',    label: 'Risiko',   icon: <Scales size={13} /> },
+  { id: 'plan',    label: 'Plan',     icon: <CalendarBlank size={13} /> },
+  { id: 'data',    label: 'Jurnal',   icon: <ClipboardText size={13} /> },
+  { id: 'filter',  label: 'Filter',   icon: <Funnel size={13} /> },
+  { id: 'weekly',  label: 'Mingguan', icon: <CalendarDots size={13} /> },
+  { id: 'monthly', label: 'Bulanan',  icon: <ChartBar size={13} /> },
+  { id: 'news',    label: 'News',     icon: <Bell size={13} /> },
 ];
 
-// ── Phase 13: props baru untuk tombol NOTIF & API KEY ──
 interface TopbarProps {
   apiKeyActive?: boolean;
   notifGranted?: boolean;
@@ -40,7 +44,6 @@ export default function Topbar({
 
   const email       = currentUser?.email || '';
   const displayName = useJournalStore((s) => s.displayName);
-  // Tampilkan: nama dari profiles → fallback username email
   const nameLabel   = displayName || email.split('@')[0] || '';
   const avatarChar  = (displayName[0] || email[0] || '?').toUpperCase();
 
@@ -60,6 +63,7 @@ export default function Topbar({
             className={`ptab ${activePage === t.id ? 'active' : ''}`}
             onClick={() => setActivePage(t.id)}
           >
+            <span className="ptab-icon">{t.icon}</span>
             {t.label}
           </button>
         ))}
@@ -67,25 +71,23 @@ export default function Topbar({
 
       <div className="theme-pill">
         <button className={`topt ${theme === 'dark'  ? 'active' : ''}`} onClick={() => setTheme('dark')}>
-          🌙 Dark
+          <Moon size={12} /> Dark
         </button>
         <button className={`topt ${theme === 'light' ? 'active' : ''}`} onClick={() => setTheme('light')}>
-          ☀️ Light
+          <Sun size={12} /> Light
         </button>
       </div>
 
-      {/* Phase 13: NOTIF button — fungsional */}
       <button
         className={`btn-notif${notifGranted ? ' notif-on' : ''}`}
         id="btn-notif"
         onClick={onOpenNotif}
         title="Pengaturan Notifikasi"
       >
-        <span>{notifGranted ? '🔔' : '🔕'}</span>
+        {notifGranted ? <Bell size={13} /> : <BellSlash size={13} />}
         <span>{notifGranted ? 'Notif ON' : 'Notif'}</span>
       </button>
 
-      {/* Phase 13: API KEY button — fungsional */}
       <button
         className={`btn-apikey${apiKeyActive ? ' key-active' : ' key-warn'}`}
         id="btn-apikey"
@@ -109,12 +111,6 @@ export default function Topbar({
         <div className="sync-indicator" style={{ padding: '6px 12px 10px' }}>
           <div className="sync-dot"></div>
           <span>Tersinkron</span>
-          <button
-            title="Debug Supabase Log"
-            style={{ background: 'none', border: 'none', color: 'var(--text4)', cursor: 'pointer', fontSize: 10, padding: '0 2px', opacity: 0.5, lineHeight: 1 }}
-          >
-            🔍
-          </button>
         </div>
         <div className="user-menu-item" onClick={() => { toggleUserMenu(); setActivePage('profile'); }}>
           👤 Profil Saya

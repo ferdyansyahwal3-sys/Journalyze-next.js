@@ -1,10 +1,11 @@
+// app/api/midtrans/create-transaction/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { _sb, _sbAdmin } from '@/lib/supabaseClient'
 import { getMidtransAuthHeader, MIDTRANS_CONFIG, generateOrderId } from '@/lib/midtrans'
 
 const VALID_PAKETS: Record<string, { label: string; nominal: number }> = {
   basic: { label: 'Journalyze Basic - Akses 3 Bulan', nominal: 99000 },
-  pro: { label: 'Journalyze Pro - Akses Lifetime', nominal: 149000 },
+  pro:   { label: 'Journalyze Pro - Akses Lifetime',  nominal: 149000 },
   elite: { label: 'Journalyze Elite - Lifetime + Review', nominal: 249000 },
 }
 
@@ -14,12 +15,12 @@ export async function POST(req: NextRequest) {
     const { paket, promo_code, user_email } = body
 
     // Validasi paket
-    const paketKey = paket in VALID_PAKETS ? paket : 'pro'
+    const paketKey  = paket in VALID_PAKETS ? paket : 'pro'
     const paketInfo = VALID_PAKETS[paketKey]
 
-    let userId: string
+    let userId:    string
     let userEmail: string
-    let userName: string
+    let userName:  string
     let userPhone: string = ''
 
     // ── Mode A: User sudah login (dari /checkout) ──
@@ -35,14 +36,14 @@ export async function POST(req: NextRequest) {
       : null
 
     if (sessionUser) {
-      userId = sessionUser.id
+      userId    = sessionUser.id
       userEmail = sessionUser.email || ''
 
       if (sessionUser.admin_verified === true && sessionUser.plan_type) {
         return NextResponse.json({ error: 'Akun ini sudah premium.' }, { status: 409 })
       }
 
-      userName = sessionUser.display_name || userEmail.split('@')[0]
+      userName  = sessionUser.display_name || userEmail.split('@')[0]
       userPhone = sessionUser.phone || ''
 
     } else {
@@ -57,21 +58,23 @@ export async function POST(req: NextRequest) {
       }
 
       userEmail = email.trim()
-      userName = nama.trim()
+      userName  = nama.trim()
       userPhone = phone
 
       // Simpan lead
       await _sbAdmin.from('leads').insert({
-        nama: userName,
-        email: userEmail,
-        phone: userPhone,
+        nama:       userName,
+        email:      userEmail,
+        phone:      userPhone,
         promo_code: promo_code || null,
-        status: 'pending',
+        status:     'pending',
       })
 
       // Cek email sudah terdaftar
       const { data: existingUsers } = await _sbAdmin.auth.admin.listUsers()
-      const existingUser = existingUsers?.users?.find((u: { email?: string; id: string }) => u.email === userEmail)
+      const existingUser = existingUsers?.users?.find(
+        (u: { email?: string; id: string }) => u.email === userEmail
+      )
 
       if (existingUser) {
         userId = existingUser.id
@@ -83,15 +86,18 @@ export async function POST(req: NextRequest) {
           .single()
 
         if (profile?.plan === 'premium') {
-          return NextResponse.json({ error: 'Email sudah terdaftar dan sudah premium. Silakan login.' }, { status: 409 })
+          return NextResponse.json(
+            { error: 'Email sudah terdaftar dan sudah premium. Silakan login.' },
+            { status: 409 }
+          )
         }
       } else {
         // Buat akun baru
         const { data: authData, error: authError } = await _sbAdmin.auth.admin.createUser({
-          email: userEmail,
+          email:          userEmail,
           password,
-          email_confirm: true,
-          user_metadata: { display_name: userName },
+          email_confirm:  true,
+          user_metadata:  { display_name: userName },
         })
 
         if (authError) {
@@ -101,11 +107,11 @@ export async function POST(req: NextRequest) {
         userId = authData.user.id
 
         await _sbAdmin.from('profiles').insert({
-          id: userId,
-          email: userEmail,
+          id:           userId,
+          email:        userEmail,
           display_name: userName,
-          phone: userPhone,
-          plan: 'free',
+          phone:        userPhone,
+          plan:         'free',
           is_activated: false,
         })
       }
@@ -116,38 +122,41 @@ export async function POST(req: NextRequest) {
 
     const payload = {
       transaction_details: {
-        order_id: orderId,
+        order_id:     orderId,
         gross_amount: paketInfo.nominal,
       },
       customer_details: {
         first_name: userName,
-        email: userEmail,
-        phone: userPhone,
+        email:      userEmail,
+        phone:      userPhone,
       },
       item_details: [
         {
-          id: `JOURNALYZE-${paketKey.toUpperCase()}`,
-          price: paketInfo.nominal,
+          id:       `JOURNALYZE-${paketKey.toUpperCase()}`,
+          price:    paketInfo.nominal,
           quantity: 1,
-          name: paketInfo.label,
+          name:     paketInfo.label,
         },
       ],
       callbacks: {
-        finish: `https://journalyze.my.id/journal?payment=success`,
-        error: `https://journalyze.my.id/checkout?paket=${paketKey}&payment=failed`,
+        finish:  `https://journalyze.my.id/journal?payment=success`,
+        error:   `https://journalyze.my.id/checkout?paket=${paketKey}&payment=failed`,
         pending: `https://journalyze.my.id/journal?payment=pending`,
       },
       notification_url: 'https://journalyze.my.id/api/midtrans/webhook',
-      custom_field1: userId,
-      custom_field2: userEmail,
-      custom_field3: paketKey,
+      // FIX: mapping custom_field harus konsisten dengan yang dibaca webhook:
+      //   webhook baca custom_field1 → userId
+      //   webhook baca custom_field3 → paketKey
+      custom_field1: userId,    // → dibaca webhook sebagai userId
+      custom_field2: userEmail, // → referensi saja, tidak dipakai webhook
+      custom_field3: paketKey,  // → dibaca webhook sebagai planKeyFromOrder ✅
     }
 
     const response = await fetch(MIDTRANS_CONFIG.snapUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: getMidtransAuthHeader(),
+        Authorization:  getMidtransAuthHeader(),
       },
       body: JSON.stringify(payload),
     })
@@ -155,23 +164,31 @@ export async function POST(req: NextRequest) {
     const txData = await response.json()
 
     if (!response.ok) {
-      console.error('Midtrans error:', txData)
+      console.error('[CREATE-TX] Midtrans error:', txData)
       return NextResponse.json({ error: 'Gagal membuat transaksi pembayaran.' }, { status: 500 })
     }
 
-    // Update lead & profile dengan order ID
-    await _sbAdmin.from('leads').update({ midtrans_order_id: orderId }).eq('email', userEmail)
+    // Simpan order ID ke lead & profile
+    await _sbAdmin
+      .from('leads')
+      .update({ midtrans_order_id: orderId })
+      .eq('email', userEmail)
 
-    await _sbAdmin.from('profiles').update({ midtrans_order_id: orderId }).eq('id', userId)
+    await _sbAdmin
+      .from('profiles')
+      .update({ midtrans_order_id: orderId })
+      .eq('id', userId)
+
+    console.log('[CREATE-TX] Transaction created:', { orderId, userId, paketKey })
 
     return NextResponse.json({
-      token: txData.token,
+      token:        txData.token,
       redirect_url: txData.redirect_url,
-      order_id: orderId,
+      order_id:     orderId,
     })
 
   } catch (error) {
-    console.error('Create transaction error:', error)
+    console.error('[CREATE-TX] Unhandled error:', error)
     const errMsg = error instanceof Error ? error.message : JSON.stringify(error)
     return NextResponse.json({ error: errMsg }, { status: 500 })
   }

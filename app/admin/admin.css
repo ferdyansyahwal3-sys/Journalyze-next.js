@@ -4,7 +4,7 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-
 ::-webkit-scrollbar{width:4px;height:4px;}::-webkit-scrollbar-thumb{background:var(--gold-bd);border-radius:99px;}
 #login-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px;}
 .login-card{background:var(--bg2);border:1px solid var(--gold-bd);border-radius:20px;padding:48px 40px;max-width:400px;width:100%;text-align:center;}
-.login-logo{font-family:'Cormorant Garamond',serif;font-size:40px;font-weight:700;margin-bottom:4px;}
+.login-logo{font-family:'Cormorant Garamond',serif;font-size:40px;font-weight:700;margin-bottom:4px;color:#ffffff;}
 .login-logo em{font-style:italic;color:var(--gold2);}
 .login-badge{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--gold);background:var(--gold-bg);border:1px solid var(--gold-bd);border-radius:99px;padding:4px 14px;margin-bottom:32px;}
 .login-label{font-size:12px;color:var(--text3);margin-bottom:8px;text-align:left;}
@@ -17,8 +17,8 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-
 .pw-toggle{position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text3);padding:4px;display:flex;align-items:center;transition:color .2s;}
 .pw-toggle:hover{color:var(--gold2);}
 .topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:center;justify-content:space-between;height:56px;position:sticky;top:0;z-index:300;}
-.brand{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:700;color:var(--gold2);}
-.brand em{font-style:italic;}
+.brand{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:700;color:#ffffff;}
+.brand em{font-style:italic;color:var(--gold2);}
 .brand-tag{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:2px;color:var(--text3);margin-left:8px;}
 .logout-btn{background:var(--red-bg);border:1px solid var(--red-bd);color:var(--red);border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;}
 .main{max-width:1200px;margin:0 auto;padding:32px 28px 80px;}
@@ -154,3 +154,9 @@ tbody td{padding:14px 16px;font-size:13px;color:var(--text2);vertical-align:midd
   .analytics-grid{grid-template-columns:1fr;}
   .tab-nav{padding:16px 16px 0;overflow-x:auto;}
 }
+
+/* ── Plan Badges (Users tab) ── */
+.badge.plan-free{background:rgba(106,96,80,0.12);color:#6A6050;border:1px solid rgba(106,96,80,0.25);}
+.badge.plan-basic{background:rgba(96,165,250,0.09);color:#60A5FA;border:1px solid rgba(96,165,250,0.25);}
+.badge.plan-pro{background:rgba(201,168,76,0.12);color:#C9A84C;border:1px solid rgba(201,168,76,0.32);}
+.badge.plan-elite{background:rgba(249,115,22,0.12);color:#F97316;border:1px solid rgba(249,115,22,0.32);}

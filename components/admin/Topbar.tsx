@@ -54,6 +54,12 @@ export default function Topbar() {
         >
           👥 User Management
         </button>
+        <button
+          className={`tab-btn ${activeTab === 'promos' ? 'active' : ''}`}
+          onClick={() => setActiveTab('promos')}
+        >
+          🎟️ Promo Codes
+        </button>
       </div>
     </>
   );

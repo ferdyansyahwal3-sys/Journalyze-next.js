@@ -7,7 +7,7 @@ import type { LicenseKey, PendingAction, UserAnalytics } from '@/lib/types';
 export const PAGE_SIZE = 20;
 
 type AuthStatus = 'checking' | 'loggedOut' | 'loggedIn';
-type Tab = 'keys' | 'analytics' | 'pixel' | 'users';
+type Tab = 'keys' | 'analytics' | 'pixel' | 'users' | 'promos';
 type Toast = { msg: string; type: 'success' | 'error' | ''; id: number } | null;
 
 export type UserPlan = 'free' | 'basic' | 'pro' | 'elite';

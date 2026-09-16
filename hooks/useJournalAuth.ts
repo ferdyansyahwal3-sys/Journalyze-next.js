@@ -7,6 +7,7 @@ import { _sb } from '@/lib/supabaseClient';
 import { useJournalStore, type UserPlan } from '@/store/useJournalStore';
 
 const EDGE_FN_URL = 'https://icouldevrvvtkxiincle.supabase.co/functions/v1/validate-license';
+const VALID_PLANS: UserPlan[] = ['basic', 'pro', 'elite'];
 
 export function useJournalAuth() {
   const setCurrentUser        = useJournalStore((s) => s.setCurrentUser);
@@ -24,40 +25,27 @@ export function useJournalAuth() {
 
   const searchParams = useSearchParams();
 
-  // ── Core: fetch profil terbaru dari DB dan resolve plan ──
-  const resolveProfileAndPlan = useCallback(
-    async (userId: string) => {
-      const { data: prof, error: profErr } = await _sb
-        .from('profiles')
-        .select('is_blocked, display_name, notif_nickname, plan, plan_type, admin_verified')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (profErr) {
-        console.error('[Journalyze] Failed to fetch profile:', profErr.message);
-        setPlan('free');
-        return null;
-      }
-
-      return prof;
-    },
-    [setPlan]
-  );
-
-  // ── onAuthSuccess: dipanggil saat login, restore session, atau refresh ──
+  // ── onAuthSuccess ──
   const onAuthSuccess = useCallback(
     async (user: NonNullable<Awaited<ReturnType<typeof _sb.auth.getUser>>['data']['user']>) => {
       try {
-        const prof = await resolveProfileAndPlan(user.id);
+        // Baca kolom plan langsung — sama dengan yang admin panel baca & set
+        const { data: prof, error: profErr } = await _sb
+          .from('profiles')
+          .select('is_blocked, display_name, notif_nickname, plan, plan_type')
+          .eq('id', user.id)
+          .maybeSingle();
 
-        if (!prof) {
+        if (profErr) {
+          console.error('[Journalyze] Failed to fetch profile:', profErr.message);
+          setPlan('free');
           setCurrentUser(user);
           setAuthOverlayVisible(false);
           return;
         }
 
         // Cek blokir
-        if (prof.is_blocked === true) {
+        if (prof?.is_blocked === true) {
           await _sb.auth.signOut();
           setCurrentUser(null);
           setAuthOverlayVisible(true);
@@ -66,34 +54,22 @@ export function useJournalAuth() {
         }
 
         // Simpan display_name
-        if (prof.display_name) {
+        if (prof?.display_name) {
           setDisplayName(prof.display_name);
           const nickname = prof.notif_nickname || prof.display_name.trim().split(/\s+/)[0];
           localStorage.setItem('jz_notif_nickname', nickname);
         }
 
-        // ── Resolve plan dari admin_verified sebagai gate ──
-        const isAdminVerified = prof.admin_verified === true;
-        let resolvedPlan: UserPlan = 'free';
+        // ── Resolve plan: baca kolom plan langsung dari DB ──
+        // Admin panel set kolom ini langsung → ini sumber kebenaran
+        // free  → terkunci
+        // basic/pro/elite → fitur sesuai paket terbuka
+        const rawPlan = (prof?.plan ?? 'free') as string;
+        const resolvedPlan: UserPlan = VALID_PLANS.includes(rawPlan as UserPlan)
+          ? (rawPlan as UserPlan)
+          : 'free';
 
-        if (isAdminVerified) {
-          const planType   = (prof.plan_type as string | null | undefined) ?? null;
-          const validPlans: UserPlan[] = ['free', 'basic', 'pro', 'elite'];
-
-          if (planType && validPlans.includes(planType as UserPlan)) {
-            resolvedPlan = planType as UserPlan;
-          } else {
-            resolvedPlan = 'basic';
-            console.warn('[Journalyze] admin_verified=true but plan_type is null, defaulting to basic');
-          }
-        } else {
-          resolvedPlan = 'free';
-          if (prof.plan === 'premium') {
-            console.info('[Journalyze] plan=premium tapi admin_verified=false → override ke free');
-          }
-        }
-
-        console.log('[Journalyze] Plan resolved:', resolvedPlan, '| admin_verified:', isAdminVerified);
+        console.log('[Journalyze] Plan resolved:', resolvedPlan, '| raw:', rawPlan);
         setPlan(resolvedPlan);
 
       } catch (e: any) {
@@ -106,18 +82,14 @@ export function useJournalAuth() {
       setCloudLoading(true);
       setCloudLoading(false);
     },
-    [resolveProfileAndPlan, setCurrentUser, setAuthOverlayVisible, setCloudLoading, setDisplayName, setPlan]
+    [setCurrentUser, setAuthOverlayVisible, setCloudLoading, setDisplayName, setPlan]
   );
 
-  // ── refreshPlan: fetch ulang profil tanpa logout/login ulang ──
-  // Dipanggil setelah balik dari Midtrans (?payment=success)
+  // ── refreshPlan: fetch ulang dari DB tanpa logout ──
   const refreshPlan = useCallback(async () => {
-    console.log('[Journalyze] refreshPlan triggered — re-fetching profile from DB...');
+    console.log('[Journalyze] refreshPlan triggered...');
     const { data: { user } } = await _sb.auth.getUser();
-    if (!user) {
-      console.warn('[Journalyze] refreshPlan: no active session');
-      return;
-    }
+    if (!user) return;
     await onAuthSuccess(user);
   }, [onAuthSuccess]);
 
@@ -128,7 +100,6 @@ export function useJournalAuth() {
     });
 
     const { data: sub } = _sb.auth.onAuthStateChange((_event, session) => {
-      // FIX: hapus kondisi !currentUser — biar selalu re-fetch saat auth berubah
       if (session?.user) {
         onAuthSuccess(session.user);
       } else {
@@ -141,27 +112,17 @@ export function useJournalAuth() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── FIX UTAMA: Deteksi ?payment=success → refresh plan otomatis ──
-  // Skenario: user bayar Midtrans → redirect ke /journal?payment=success
-  // Saat itu session masih aktif tapi plan di store masih 'free'
-  // → refreshPlan() fetch ulang dari DB yang sudah diupdate webhook
+  // ── Detect ?payment=success → refresh plan otomatis ──
   useEffect(() => {
     const paymentStatus = searchParams?.get('payment');
-
     if (paymentStatus === 'success') {
-      console.log('[Journalyze] Detected ?payment=success — refreshing plan...');
-
-      // Delay kecil untuk pastikan webhook Midtrans sudah selesai update DB
-      // Webhook biasanya selesai dalam <3 detik setelah user redirect
+      console.log('[Journalyze] payment=success detected, refreshing plan...');
       const timer = setTimeout(async () => {
         await refreshPlan();
-
-        // Bersihkan query param dari URL tanpa reload halaman
         const url = new URL(window.location.href);
         url.searchParams.delete('payment');
         window.history.replaceState({}, '', url.toString());
-      }, 2000); // 2 detik buffer
-
+      }, 2000);
       return () => clearTimeout(timer);
     }
   }, [searchParams, refreshPlan]);
@@ -207,17 +168,11 @@ export function useJournalAuth() {
         const res = await fetch(EDGE_FN_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            licenseKey:  licKey,
-            email:       emailT,
-            password:    pass,
-            phone:       phoneT,
-            displayName: nameT,
-          }),
+          body: JSON.stringify({ licenseKey: licKey, email: emailT, password: pass, phone: phoneT, displayName: nameT }),
         });
         const result = await res.json();
         if (!result.success) {
-          const errMsg   = result.error || 'Terjadi kesalahan. Coba lagi.';
+          const errMsg    = result.error || 'Terjadi kesalahan. Coba lagi.';
           const isRevoked = errMsg.toLowerCase().includes('dicabut') || errMsg.toLowerCase().includes('revoked');
           setRegErr((isRevoked ? '🚫 ' : '❌ ') + errMsg);
           setRegBusy(false);

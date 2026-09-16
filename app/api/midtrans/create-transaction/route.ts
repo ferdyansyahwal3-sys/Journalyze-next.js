@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
       // Ambil data profile
       const { data: profile } = await _sbAdmin
         .from('profiles')
-        .select('display_name, phone, plan')
+        .select('display_name, phone, plan, admin_verified')
         .eq('id', userId)
         .single()
 
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
 
         const { data: profile } = await _sbAdmin
           .from('profiles')
-          .select('plan')
+          .select('plan, admin_verified')
           .eq('id', userId)
           .single()
 

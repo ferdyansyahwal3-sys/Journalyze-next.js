@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
         .eq('id', userId)
         .single()
 
-      if (profile?.plan === 'premium') {
+      if (profile?.plan === 'premium' && profile?.admin_verified === true) {
         return NextResponse.json({ error: 'Akun ini sudah premium.' }, { status: 409 })
       }
 
@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
           .eq('id', userId)
           .single()
 
-        if (profile?.plan === 'premium') {
+        if (profile?.plan === 'premium' && profile?.admin_verified === true) {
           return NextResponse.json({ error: 'Email sudah terdaftar dan sudah premium. Silakan login.' }, { status: 409 })
         }
       } else {

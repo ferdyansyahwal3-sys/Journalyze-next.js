@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
       const { data: profile, error: updateError } = await supabaseAdmin
         .from('profiles')
         .update({
-          plan:              'premium',
+          plan:              paketKey,
           plan_type:         paketKey,
           admin_verified:    true,
           pending_plan:      null,

@@ -29,6 +29,8 @@ import DemoBanner  from './DemoBanner';
 import Toast       from '@/components/journal/Toast';
 import ConfirmModal from '@/components/journal/ConfirmModal';
 
+const BANNER_HEIGHT = 37; // harus sama dengan di DemoBanner.tsx
+
 export default function DemoApp() {
   const activePage    = useJournalStore(s => s.activePage);
   const setActivePage = useJournalStore(s => s.setActivePage);
@@ -36,13 +38,10 @@ export default function DemoApp() {
   const switchPage = (page: string) => setActivePage(page as JournalPage);
 
   useEffect(() => {
-    // Sama dengan JournalApp — restore theme & last tab
     const saved = (localStorage.getItem('jz_theme') as 'dark' | 'light') || 'dark';
     document.documentElement.setAttribute('data-theme', saved);
     useJournalStore.setState({ theme: saved });
 
-    // Pastikan user selalu null di demo mode
-    // → semua store ops tidak akan sync ke Supabase
     useJournalStore.setState({ currentUser: null, authOverlayVisible: false });
 
     const lastTab = localStorage.getItem('jz_last_tab') as JournalPage | null;
@@ -51,19 +50,16 @@ export default function DemoApp() {
 
   return (
     <>
-      {/* Banner demo — selalu tampil di atas */}
+      {/* Banner demo — fixed di paling atas, spacer sudah ada di dalam DemoBanner */}
       <DemoBanner />
 
-      {/* Topbar versi demo — tanpa user menu, tanpa logout */}
-      <DemoTopbar />
+      {/* Topbar versi demo — digeser ke bawah banner dengan style override */}
+      <div style={{ position: 'sticky', top: BANNER_HEIGHT, zIndex: 300 }}>
+        <DemoTopbar />
+      </div>
 
-      {/* Main content — 100% sama dengan JournalApp */}
+      {/* Main content */}
       <div className={`main ${activePage === 'home' ? 'home-active' : ''}`}>
-        {/*
-          Semua Page dipass userId=null secara implisit melalui store.
-          useJournalStore.currentUser = null → semua operasi write
-          di useTradeStore tidak akan menyentuh Supabase.
-        */}
         <PageHome
           active={activePage === 'home'}
           switchPage={switchPage}

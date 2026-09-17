@@ -76,6 +76,10 @@ declare global {
   }
 }
 
+function formatRupiah(amount: number) {
+  return 'Rp ' + amount.toLocaleString('id-ID');
+}
+
 function CheckoutContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -89,6 +93,11 @@ function CheckoutContent() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [promoCode, setPromoCode] = useState('');
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoMsg, setPromoMsg] = useState('');
+  const [promoValid, setPromoValid] = useState(false);
+  const [finalAmount, setFinalAmount] = useState(paket.harga);
+  const [appliedPromo, setAppliedPromo] = useState('');
   const [authChecked, setAuthChecked] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
 
@@ -114,6 +123,15 @@ function CheckoutContent() {
     loadUser();
   }, []);
 
+  // Reset finalAmount kalau paket berubah
+  useEffect(() => {
+    setFinalAmount(paket.harga);
+    setPromoValid(false);
+    setPromoMsg('');
+    setAppliedPromo('');
+    setPromoCode('');
+  }, [paketKey, paket.harga]);
+
   // Load Midtrans Snap
   useEffect(() => {
     const script = document.createElement('script');
@@ -125,6 +143,49 @@ function CheckoutContent() {
       if (document.head.contains(script)) document.head.removeChild(script);
     };
   }, []);
+
+  const handleTerapkan = async () => {
+    const code = promoCode.trim().toUpperCase();
+    if (!code) return;
+
+    setPromoLoading(true);
+    setPromoMsg('');
+    setPromoValid(false);
+
+    try {
+      const res = await fetch('/api/midtrans/validate-promo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ promo_code: code, paket: paketKey }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        setPromoMsg(data.error || 'Kode promo tidak valid.');
+        setPromoValid(false);
+        setFinalAmount(paket.harga);
+        setAppliedPromo('');
+      } else {
+        setFinalAmount(data.final_amount);
+        setPromoValid(true);
+        setAppliedPromo(code);
+        setPromoMsg(`Promo berhasil! Hemat ${formatRupiah(paket.harga - data.final_amount)}`);
+      }
+    } catch {
+      setPromoMsg('Gagal memvalidasi promo. Coba lagi.');
+      setPromoValid(false);
+    } finally {
+      setPromoLoading(false);
+    }
+  };
+
+  const handleHapusPromo = () => {
+    setPromoValid(false);
+    setPromoCode('');
+    setPromoMsg('');
+    setAppliedPromo('');
+    setFinalAmount(paket.harga);
+  };
 
   const handleBayar = async () => {
     if (!snapLoaded) {
@@ -139,7 +200,7 @@ function CheckoutContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           paket: paketKey,
-          promo_code: promoCode.trim() || null,
+          promo_code: appliedPromo || null,
           user_email: userEmail,
         }),
       });
@@ -170,9 +231,11 @@ function CheckoutContent() {
     );
   }
 
+  const diskon = paket.harga - finalAmount;
+
   return (
     <div className="co-root">
-      {/* Navbar — FIX #1: logo markup sama dengan halaman journal */}
+      {/* Navbar */}
       <nav className="co-nav">
         <a href="/home" className="co-nav-logo">
           <span className="co-nav-logo-text">Journal</span>
@@ -241,7 +304,7 @@ function CheckoutContent() {
           <div className="co-right">
             <div className="co-card">
 
-              {/* FIX #3: Greeting — minimalis, luxury, bukan bulat gradient */}
+              {/* Greeting */}
               <div className="co-greeting">
                 <div className="co-greeting-avatar">
                   {userName.charAt(0).toUpperCase()}
@@ -254,10 +317,12 @@ function CheckoutContent() {
                 </div>
               </div>
 
-              {/* Harga — langsung setelah greeting tanpa divider ganda */}
+              {/* Harga */}
               <div className="co-total-label">Total Pembayaran</div>
               <div className="co-harga-coret">{paket.hargaCoret}</div>
-              <div className="co-harga">{paket.hargaDisp}</div>
+              <div className="co-harga" style={promoValid ? { color: '#22C55E' } : undefined}>
+                {formatRupiah(finalAmount)}
+              </div>
               <div className="co-harga-sub">
                 {paketKey === 'basic'
                   ? 'Dibayar sekali untuk akses 3 bulan.'
@@ -276,10 +341,47 @@ function CheckoutContent() {
                   className="co-promo-input"
                   placeholder="Contoh: TRADER50"
                   value={promoCode}
-                  onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                  onChange={(e) => {
+                    setPromoCode(e.target.value.toUpperCase());
+                    if (promoValid) handleHapusPromo();
+                  }}
+                  disabled={promoValid}
                 />
-                <button className="co-promo-btn" type="button">Terapkan</button>
+                {promoValid ? (
+                  <button
+                    className="co-promo-btn"
+                    type="button"
+                    onClick={handleHapusPromo}
+                    style={{ background: 'rgba(232,64,64,0.12)', color: '#E84040', borderColor: 'rgba(232,64,64,0.3)' }}
+                  >
+                    Hapus
+                  </button>
+                ) : (
+                  <button
+                    className="co-promo-btn"
+                    type="button"
+                    onClick={handleTerapkan}
+                    disabled={promoLoading || !promoCode.trim()}
+                  >
+                    {promoLoading ? '...' : 'Terapkan'}
+                  </button>
+                )}
               </div>
+
+              {/* Pesan promo */}
+              {promoMsg && (
+                <div style={{
+                  fontSize: 12,
+                  marginTop: 8,
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  color: promoValid ? '#22C55E' : '#E84040',
+                  background: promoValid ? 'rgba(34,197,94,0.09)' : 'rgba(232,64,64,0.09)',
+                  border: `1px solid ${promoValid ? 'rgba(34,197,94,0.25)' : 'rgba(232,64,64,0.25)'}`,
+                }}>
+                  {promoValid ? '✓ ' : '⚠️ '}{promoMsg}
+                </div>
+              )}
 
               <div className="co-divider" />
 
@@ -289,9 +391,17 @@ function CheckoutContent() {
                   <span>Harga paket</span>
                   <span>{paket.hargaDisp}</span>
                 </div>
+                {promoValid && diskon > 0 && (
+                  <div className="co-rincian-row" style={{ color: '#22C55E' }}>
+                    <span>Diskon ({appliedPromo})</span>
+                    <span>- {formatRupiah(diskon)}</span>
+                  </div>
+                )}
                 <div className="co-rincian-row co-rincian-total">
                   <span>Total</span>
-                  <span>{paket.hargaDisp}</span>
+                  <span style={promoValid ? { color: '#22C55E' } : undefined}>
+                    {formatRupiah(finalAmount)}
+                  </span>
                 </div>
               </div>
 
@@ -312,7 +422,7 @@ function CheckoutContent() {
                     {loading ? (
                       <><span className="co-spinner" /> Memproses...</>
                     ) : (
-                      <>💳 Bayar Sekarang — {paket.hargaDisp}</>
+                      <>💳 Bayar Sekarang — {formatRupiah(finalAmount)}</>
                     )}
                   </button>
                   <div className="co-secure">

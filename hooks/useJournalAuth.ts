@@ -64,7 +64,7 @@ export function useJournalAuth() {
         // Admin panel set kolom ini langsung → ini sumber kebenaran
         // free  → terkunci
         // basic/pro/elite → fitur sesuai paket terbuka
-        const rawPlan = (prof?.plan ?? 'free') as string;
+        const rawPlan = (prof?.plan_type ?? prof?.plan ?? 'free') as string;
         const resolvedPlan: UserPlan = VALID_PLANS.includes(rawPlan as UserPlan)
           ? (rawPlan as UserPlan)
           : 'free';

@@ -434,11 +434,9 @@ function getPlaceholderSVG(category: string, pair?: string): string {
 export default function PageNews({
   active,
   onOpenApiKeyModal,
-  aiLocked,
 }: {
   active: boolean;
   onOpenApiKeyModal?: () => void;
-  aiLocked?: boolean;
 }) {
   const [allData, setAllData]       = useState<NewsItem[]>([]);
   const [events, setEvents]         = useState<EconEvent[]>([]);
@@ -451,6 +449,9 @@ export default function PageNews({
   const [calTitle, setCalTitle]     = useState('📅 Economic Calendar — Minggu Ini');
   const [expandedSpec, setExpandedSpec] = useState<Record<string,boolean>>({});
   const [expandedEvent, setExpandedEvent] = useState<number|null>(null);
+  // Cache history per event — key: event name hash, value: history array
+  const [historyCache, setHistoryCache] = useState<Record<string, {date:string;actual:string;forecast:string;previous:string}[]>>({});
+  const [historyLoading, setHistoryLoading] = useState<Record<string, boolean>>({});
   // OG image cache — tidak dipakai lagi (selalu 403)
   const [ogImages] = useState<Record<string,string>>({});
   const ogFetchingRef = useRef<Set<string>>(new Set());
@@ -501,6 +502,32 @@ export default function PageNews({
       } catch { /* silent */ }
     }));
   }, [unsplashImages]);
+
+  // ── Lazy load history per event (dipanggil saat expand) ──────────────────
+  const fetchEventHistory = useCallback(async (eventName: string) => {
+    if (!eventName) return;
+    const key = eventName.toLowerCase().trim();
+    // Sudah ada di cache atau sedang loading → skip
+    if (historyCache[key] || historyLoading[key]) return;
+
+    setHistoryLoading(prev => ({ ...prev, [key]: true }));
+    try {
+      const res = await fetch(`/api/econ-history?event=${encodeURIComponent(eventName)}`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.history?.length) {
+          setHistoryCache(prev => ({ ...prev, [key]: data.history }));
+        } else {
+          // Tandai sebagai sudah di-fetch tapi kosong (agar tidak fetch ulang)
+          setHistoryCache(prev => ({ ...prev, [key]: [] }));
+        }
+      }
+    } catch { /* silent */ } finally {
+      setHistoryLoading(prev => ({ ...prev, [key]: false }));
+    }
+  }, [historyCache, historyLoading]);
 
   // ── Phase 14: trigger AI setelah berita loaded ────────────────────────────
   const triggerAI = useCallback(async (items: NewsItem[]) => {
@@ -740,7 +767,7 @@ export default function PageNews({
         ) : (
           <button
             style={{background:'none',border:'none',color:'var(--gold2)',fontSize:'10px',cursor:'pointer',padding:'0',fontFamily:'inherit'}}
-            onClick={aiLocked ? undefined : onOpenApiKeyModal}
+            onClick={onOpenApiKeyModal}
           >
             ⚡ Aktifkan AI untuk analisis otomatis
           </button>
@@ -922,10 +949,13 @@ export default function PageNews({
               <span style={{display:'flex',alignItems:'center',gap:'4px',fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',color:'var(--green)'}}><span style={{width:'8px',height:'8px',borderRadius:'50%',background:'var(--green)',display:'inline-block'}} />Low</span>
             </div>
           </div>
-          {/* Header kolom seperti Forex Factory */}
+          {/* Wrapper scroll horizontal HANYA untuk mobile */}
+          <div style={{overflowX:'auto' as const, WebkitOverflowScrolling:'touch' as const}}>
+            <div style={{minWidth:'600px'}}>
+          {/* Header kolom */}
           <div style={{
             display:'grid',
-            gridTemplateColumns:'80px 26px 1fr 76px 76px 76px 20px 24px',
+            gridTemplateColumns:'80px 28px 1fr 76px 76px 76px 20px 24px',
             gap:'0', padding:'6px 16px',
             borderBottom:'1px solid var(--border2)',
             fontFamily:"'JetBrains Mono',monospace", fontSize:'8px',
@@ -965,91 +995,63 @@ export default function PageNews({
                   <div
                     style={{
                       display:'grid',
-                      gridTemplateColumns:'80px 26px 1fr 76px 76px 76px 20px 24px',
+                      gridTemplateColumns:'80px 28px 1fr 76px 76px 76px 20px 24px',
                       gap:'0',
                       padding:'9px 16px',
                       cursor:'pointer',
                       transition:'background 0.15s',
                       background: isExpanded ? 'rgba(255,255,255,0.04)' : 'transparent',
                     }}
-                    onClick={() => setExpandedEvent(isExpanded ? null : i)}
+                    onClick={() => {
+                      const newExpanded = isExpanded ? null : i;
+                      setExpandedEvent(newExpanded);
+                      if (!isExpanded && ev.name) {
+                        fetchEventHistory(ev.name);
+                      }
+                    }}
                     onMouseEnter={e => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.025)'; }}
                     onMouseLeave={e => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                   >
-                    {/* Waktu — Hari / Jam:Menit / WIB label */}
+                    {/* Waktu */}
                     <div style={{display:'flex',flexDirection:'column' as const,gap:'2px',justifyContent:'center'}}>
-                      <span style={{
-                        fontFamily:"'JetBrains Mono',monospace",fontSize:'8.5px',
-                        color:'var(--text3)',letterSpacing:'0.5px',fontWeight:500,
-                      }}>{ev.day}</span>
-                      <span style={{
-                        fontFamily:"'JetBrains Mono',monospace",fontSize:'11px',
-                        color:'var(--gold2)',fontWeight:700,letterSpacing:'0.5px',
-                      }}>{ev.timeWIB.replace(' WIB','')}</span>
-                      <span style={{
-                        fontFamily:"'JetBrains Mono',monospace",fontSize:'7.5px',
-                        color:'var(--text4)',letterSpacing:'1px',
-                      }}>WIB</span>
+                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'8.5px',color:'var(--text3)',letterSpacing:'0.5px',fontWeight:500}}>{ev.day}</span>
+                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'11px',color:'var(--gold2)',fontWeight:700,letterSpacing:'0.5px'}}>{ev.timeWIB.replace(' WIB','')}</span>
+                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'7.5px',color:'var(--text4)',letterSpacing:'1px'}}>WIB</span>
                     </div>
                     {/* Flag */}
-                    <div style={{display:'flex',alignItems:'center',justifyContent:'center',fontSize:'14px'}}>{ev.flag}</div>
-                    {/* Nama event + currency badge */}
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'center',fontSize:'15px'}}>{ev.flag}</div>
+                    {/* Nama event + currency */}
                     <div style={{display:'flex',alignItems:'center',gap:'6px',paddingLeft:'4px',paddingRight:'4px',overflow:'hidden'}}>
-                      <span style={{
-                        fontSize:'11px',color:'var(--text1)',fontWeight:500,
-                        lineHeight:'1.3',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const,
-                      }}>{ev.name}</span>
+                      <span style={{fontSize:'11px',color:'var(--text1)',fontWeight:500,lineHeight:'1.3',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{ev.name}</span>
                       {ev.currency && (
-                        <span style={{
-                          flexShrink:0,
-                          fontFamily:"'JetBrains Mono',monospace",fontSize:'7.5px',
-                          padding:'2px 5px',borderRadius:'3px',
-                          background:'rgba(255,255,255,0.07)',color:'var(--text3)',
-                          letterSpacing:'0.5px',fontWeight:600,
-                        }}>{ev.currency}</span>
+                        <span style={{flexShrink:0,fontFamily:"'JetBrains Mono',monospace",fontSize:'7.5px',padding:'2px 5px',borderRadius:'3px',background:'rgba(255,255,255,0.07)',color:'var(--text3)',letterSpacing:'0.5px',fontWeight:600}}>{ev.currency}</span>
                       )}
                     </div>
                     {/* Actual */}
                     <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end' as const}}>
-                      <span style={{
-                        fontFamily:"'JetBrains Mono',monospace",fontSize:'11px',
-                        fontWeight:ev.actual?700:400,color:actualColor,
-                      }}>{ev.actual||'—'}</span>
+                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'11px',fontWeight:ev.actual?700:400,color:actualColor}}>{ev.actual||'—'}</span>
                     </div>
                     {/* Forecast */}
                     <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end' as const}}>
-                      <span style={{
-                        fontFamily:"'JetBrains Mono',monospace",fontSize:'11px',
-                        color:ev.forecast!=='—'?'var(--gold2)':'var(--text4)',fontWeight:500,
-                      }}>{ev.forecast!=='—'?ev.forecast:'—'}</span>
+                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'11px',color:ev.forecast!=='—'?'var(--gold2)':'var(--text4)',fontWeight:500}}>{ev.forecast!=='—'?ev.forecast:'—'}</span>
                     </div>
-                    {/* Prev — padding kanan agar tidak tempel dot */}
+                    {/* Prev */}
                     <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end' as const,paddingRight:'12px'}}>
-                      <span style={{
-                        fontFamily:"'JetBrains Mono',monospace",fontSize:'11px',
-                        color:ev.prev!=='—'?'var(--text3)':'var(--text4)',
-                      }}>{ev.prev!=='—'?ev.prev:'—'}</span>
+                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'11px',color:ev.prev!=='—'?'var(--text3)':'var(--text4)'}}>{ev.prev!=='—'?ev.prev:'—'}</span>
                     </div>
                     {/* Impact dot */}
                     <div style={{display:'flex',alignItems:'center',justifyContent:'center' as const}}>
-                      <span style={{
-                        width:'8px',height:'8px',borderRadius:'50%',display:'inline-block',flexShrink:0,
-                        background: ev.impact==='high'?'var(--red)':ev.impact==='medium'?'var(--gold2)':'var(--green)',
-                        boxShadow: ev.impact==='high'?'0 0 5px var(--red)':'none',
-                      }}/>
+                      <span style={{width:'8px',height:'8px',borderRadius:'50%',display:'inline-block',flexShrink:0,background:ev.impact==='high'?'var(--red)':ev.impact==='medium'?'var(--gold2)':'var(--green)',boxShadow:ev.impact==='high'?'0 0 5px var(--red)':'none'}}/>
                     </div>
                     {/* Expand toggle */}
                     <div style={{display:'flex',alignItems:'center',justifyContent:'center' as const}}>
-                      <span style={{
-                        fontSize:'10px',color:'var(--text4)',display:'inline-block',
-                        transform:isExpanded?'rotate(180deg)':'rotate(0deg)',transition:'transform 0.2s',
-                      }}>▾</span>
+                      <span style={{fontSize:'10px',color:'var(--text4)',display:'inline-block',transform:isExpanded?'rotate(180deg)':'rotate(0deg)',transition:'transform 0.2s'}}>▾</span>
                     </div>
                   </div>
 
                   {/* Detail panel (expand) */}
                   {isExpanded && (
-                    <div style={{padding:'12px 16px 16px',background:'rgba(0,0,0,0.25)',borderTop:'1px solid var(--border2)'}}>
+                    <div style={{padding:'10px 12px 14px',background:'rgba(0,0,0,0.25)',borderTop:'1px solid var(--border2)'}}>
 
                       {/* Stats 3 kotak */}
                       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'1px',marginBottom:'12px',borderRadius:'8px',overflow:'hidden',border:'1px solid var(--border)'}}>
@@ -1066,7 +1068,7 @@ export default function PageNews({
                       </div>
 
                       {/* Badge info */}
-                      <div style={{display:'flex',gap:'6px',flexWrap:'wrap' as const,marginBottom: ev.history?.length ? '12px' : '0'}}>
+                      <div style={{display:'flex',gap:'6px',flexWrap:'wrap' as const,marginBottom:'12px'}}>
                         <span style={{padding:'3px 8px',borderRadius:'4px',background:'rgba(255,255,255,0.05)',fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',color:'var(--text3)'}}>
                           {ev.flag} {ev.currency}
                         </span>
@@ -1078,8 +1080,7 @@ export default function PageNews({
                           ⏰ {ev.timeWIB}
                         </span>
                         {ev.actual && !isNaN(actualNum) && !isNaN(forecastNum) && (
-                          <span style={{
-                            padding:'3px 8px',borderRadius:'4px',fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',
+                          <span style={{padding:'3px 8px',borderRadius:'4px',fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',
                             background:actualNum>forecastNum?'rgba(50,200,100,0.12)':'rgba(220,50,50,0.12)',
                             color:actualNum>forecastNum?'var(--green)':'var(--red)',
                           }}>
@@ -1088,44 +1089,85 @@ export default function PageNews({
                         )}
                       </div>
 
-                      {/* History 5 bulan terakhir */}
-                      {ev.history && ev.history.length > 0 && (
-                        <div style={{marginTop:'2px'}}>
-                          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',letterSpacing:'1.5px',textTransform:'uppercase' as const,color:'var(--text4)',marginBottom:'6px'}}>
-                            📅 History ({ev.history.length} rilis sebelumnya)
-                          </div>
-                          <div style={{borderRadius:'6px',overflow:'hidden',border:'1px solid var(--border2)'}}>
-                            {/* History header */}
-                            <div style={{display:'grid',gridTemplateColumns:'1fr 80px 80px 80px',gap:'0',padding:'5px 10px',background:'rgba(255,255,255,0.03)',borderBottom:'1px solid var(--border2)'}}>
-                              {['Tanggal','Actual','Forecast','Previous'].map(h => (
-                                <span key={h} style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'7.5px',color:'var(--text4)',letterSpacing:'1px',textAlign:h!=='Tanggal'?'right' as const:'left' as const}}>{h}</span>
-                              ))}
+                      {/* History bulan-bulan sebelumnya */}
+                      {(() => {
+                        const key = (ev.name||'').toLowerCase().trim();
+                        const cachedHistory = historyCache[key];
+                        const isLoadingHistory = historyLoading[key];
+                        // Gabungkan: ev.history dari ForexFactory weekly + cachedHistory dari lazy fetch
+                        const displayHistory = cachedHistory ?? ev.history ?? [];
+
+                        return (
+                          <div style={{marginTop:'8px'}}>
+                            <div style={{
+                              fontFamily:"'JetBrains Mono',monospace",fontSize:'7.5px',
+                              letterSpacing:'1.5px',textTransform:'uppercase' as const,
+                              color:'var(--text4)',marginBottom:'6px',
+                              display:'flex',alignItems:'center',gap:'6px',
+                            }}>
+                              <span>📅 History Rilis Sebelumnya</span>
+                              {isLoadingHistory && (
+                                <span style={{animation:'spin 1s linear infinite',display:'inline-block',fontSize:'10px'}}>⟳</span>
+                              )}
                             </div>
-                            {/* History rows */}
-                            {ev.history.map((h, hi) => {
-                              const hActualNum = parseFloat((h.actual||'').replace(/[^0-9.\-]/g,''));
-                              const hForecastNum = parseFloat((h.forecast||'').replace(/[^0-9.\-]/g,''));
-                              let hColor = 'var(--text2)';
-                              if (h.actual && h.actual!=='—' && !isNaN(hActualNum) && !isNaN(hForecastNum)) {
-                                hColor = hActualNum>hForecastNum?'var(--green)':hActualNum<hForecastNum?'var(--red)':'var(--text2)';
-                              }
-                              return (
-                                <div key={hi} style={{
-                                  display:'grid',gridTemplateColumns:'1fr 80px 80px 80px',gap:'0',
-                                  padding:'6px 10px',
-                                  borderBottom:hi<(ev.history!.length-1)?'1px solid var(--border2)':'none',
-                                  background:hi%2===0?'transparent':'rgba(255,255,255,0.015)',
+
+                            {isLoadingHistory && displayHistory.length === 0 ? (
+                              <div style={{
+                                padding:'10px',textAlign:'center' as const,
+                                color:'var(--text4)',fontSize:'10px',
+                                fontFamily:"'JetBrains Mono',monospace",
+                              }}>Memuat data history...</div>
+                            ) : displayHistory.length === 0 ? (
+                              <div style={{
+                                padding:'8px',textAlign:'center' as const,
+                                color:'var(--text4)',fontSize:'9px',
+                                fontFamily:"'JetBrains Mono',monospace",
+                                border:'1px solid var(--border2)',borderRadius:'6px',
+                              }}>Data history tidak tersedia untuk event ini</div>
+                            ) : (
+                              <div style={{borderRadius:'6px',overflow:'hidden',border:'1px solid var(--border2)'}}>
+                                {/* Header */}
+                                <div style={{
+                                  display:'grid',gridTemplateColumns:'1fr 56px 56px 56px',
+                                  gap:'0',padding:'4px 8px',
+                                  background:'rgba(255,255,255,0.03)',
+                                  borderBottom:'1px solid var(--border2)',
                                 }}>
-                                  <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'9px',color:'var(--text3)'}}>{h.date}</span>
-                                  <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'9px',color:hColor,fontWeight:600,textAlign:'right' as const}}>{h.actual||'—'}</span>
-                                  <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'9px',color:'var(--gold2)',textAlign:'right' as const}}>{h.forecast||'—'}</span>
-                                  <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'9px',color:'var(--text4)',textAlign:'right' as const}}>{h.previous||'—'}</span>
+                                  {['Tanggal','Actual','Fore.','Prev'].map(h => (
+                                    <span key={h} style={{
+                                      fontFamily:"'JetBrains Mono',monospace",fontSize:'7px',
+                                      color:'var(--text4)',letterSpacing:'0.5px',
+                                      textAlign:h!=='Tanggal'?'right' as const:'left' as const,
+                                    }}>{h}</span>
+                                  ))}
                                 </div>
-                              );
-                            })}
+                                {/* Rows */}
+                                {displayHistory.map((h, hi) => {
+                                  const hActualNum = parseFloat((h.actual||'').replace(/[^0-9.\-]/g,''));
+                                  const hForecastNum = parseFloat((h.forecast||'').replace(/[^0-9.\-]/g,''));
+                                  let hColor = 'var(--text2)';
+                                  if (h.actual && h.actual!=='—' && !isNaN(hActualNum) && !isNaN(hForecastNum)) {
+                                    hColor = hActualNum>hForecastNum?'var(--green)':hActualNum<hForecastNum?'var(--red)':'var(--text2)';
+                                  }
+                                  return (
+                                    <div key={hi} style={{
+                                      display:'grid',gridTemplateColumns:'1fr 56px 56px 56px',
+                                      gap:'0',padding:'5px 8px',
+                                      borderBottom:hi<displayHistory.length-1?'1px solid var(--border2)':'none',
+                                      background:hi%2===0?'transparent':'rgba(255,255,255,0.015)',
+                                    }}>
+                                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'8.5px',color:'var(--text3)'}}>{h.date}</span>
+                                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'8.5px',color:hColor,fontWeight:600,textAlign:'right' as const}}>{h.actual||'—'}</span>
+                                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'8.5px',color:'var(--gold2)',textAlign:'right' as const}}>{h.forecast||'—'}</span>
+                                      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'8.5px',color:'var(--text4)',textAlign:'right' as const}}>{h.previous||'—'}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      )}
+                        );
+                      })()}
 
                     </div>
                   )}
@@ -1133,8 +1175,10 @@ export default function PageNews({
               );
             })}
           </div>
-        </div>
-      </div>
+          </div>{/* end minWidth wrapper */}
+          </div>{/* end overflowX wrapper */}
+        </div>{/* end box */}
+      </div>{/* end news-events-section */}
 
       {/* ── Spekulasi AI ──────────────────────────────────────────────────── */}
       <div id="news-speculation-section" style={{display:state==='ok'&&hasSpec?'block':'none',marginBottom:'20px'}}>

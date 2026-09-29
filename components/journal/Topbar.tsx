@@ -4,7 +4,7 @@
 import React from 'react';
 import {
   House, Scales, CalendarBlank, ClipboardText, Funnel,
-  CalendarDots, ChartBar, Bell, BellSlash, Moon, Sun
+  CalendarDots, ChartBar, Bell, BellSlash, Moon, Sun, Images
 } from '@phosphor-icons/react';
 import { useJournalStore, JournalPage } from '@/store/useJournalStore';
 import { useJournalAuth } from '@/hooks/useJournalAuth';
@@ -17,6 +17,7 @@ const PAGE_TABS: { id: JournalPage; label: string; icon: React.ReactNode }[] = [
   { id: 'filter',  label: 'Filter',   icon: <Funnel size={13} /> },
   { id: 'weekly',  label: 'Mingguan', icon: <CalendarDots size={13} /> },
   { id: 'monthly', label: 'Bulanan',  icon: <ChartBar size={13} /> },
+  { id: 'gallery', label: 'Gallery',  icon: <Images size={13} /> },
   { id: 'news',    label: 'News',     icon: <Bell size={13} /> },
 ];
 

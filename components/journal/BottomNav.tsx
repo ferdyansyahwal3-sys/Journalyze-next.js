@@ -5,7 +5,7 @@ import React from 'react';
 import {
   House, Scales, CalendarBlank, ClipboardText, Funnel,
   CalendarDots, ChartBar, Bell, BellSlash, Key,
-  Moon, Sun, User, SignOut, DotsThree
+  Moon, Sun, User, SignOut, DotsThree, Images
 } from '@phosphor-icons/react';
 import { useJournalStore, BN_MAIN, BN_MORE, JournalPage } from '@/store/useJournalStore';
 import { useJournalAuth } from '@/hooks/useJournalAuth';
@@ -22,6 +22,7 @@ const MORE_ICONS: Record<string, { icon: React.ReactNode; label: string }> = {
   weekly:  { icon: <CalendarDots size={22} />, label: 'Mingguan' },
   monthly: { icon: <ChartBar size={22} />,     label: 'Bulanan' },
   news:    { icon: <Bell size={22} />,         label: 'News Forex' },
+  gallery: { icon: <Images size={22} />,       label: 'Gallery' },
 };
 
 interface BottomNavProps {
@@ -56,17 +57,11 @@ export default function BottomNav({
 
   return (
     <>
-      {/* Overlay gelap di belakang drawer */}
       <div
         className={`bn-overlay ${moreDrawerOpen ? 'show' : ''}`}
         onClick={closeMoreDrawer}
       />
 
-      {/*
-        bn-more-drawer — drawer "Menu Lainnya"
-        Padding bawah ditangani lewat CSS di layout.tsx (@media standalone).
-        Style inline di sini hanya untuk konten di dalam drawer.
-      */}
       <div className={`bn-more-drawer ${moreDrawerOpen ? 'open' : ''}`}>
         <div className="bn-drawer-handle" />
         <div className="bn-drawer-title">Menu Lainnya</div>
@@ -84,7 +79,6 @@ export default function BottomNav({
           ))}
         </div>
 
-        {/* Tema */}
         <div className="bn-drawer-theme">
           <span className="bn-drawer-theme-label">Tema Tampilan</span>
           <div className="bn-theme-pill">
@@ -103,7 +97,6 @@ export default function BottomNav({
           </div>
         </div>
 
-        {/* API Key */}
         <div
           className="bn-drawer-theme"
           style={{ marginTop: 12, paddingTop: 14, borderTop: '1px solid var(--border)' }}
@@ -119,7 +112,6 @@ export default function BottomNav({
           </button>
         </div>
 
-        {/* Notifikasi */}
         <div
           className="bn-drawer-theme"
           style={{ marginTop: 12, paddingTop: 14, borderTop: '1px solid var(--border)' }}
@@ -135,7 +127,6 @@ export default function BottomNav({
           </button>
         </div>
 
-        {/* Profil */}
         <div
           className="bn-drawer-theme"
           style={{ marginTop: 12, paddingTop: 14, borderTop: '1px solid var(--border)' }}
@@ -150,7 +141,6 @@ export default function BottomNav({
           </button>
         </div>
 
-        {/* Footer drawer — email + logout */}
         <div
           style={{
             margin: '14px 0 0',
@@ -207,11 +197,6 @@ export default function BottomNav({
         </div>
       </div>
 
-      {/*
-        bot-nav — bottom navigation bar utama
-        Padding bawah ditangani lewat CSS di layout.tsx (@media standalone)
-        supaya tombol tidak ketutup home indicator iPhone.
-      */}
       <nav className="bot-nav">
         {BN_MAIN.map((p) => (
           <button
@@ -226,7 +211,6 @@ export default function BottomNav({
           </button>
         ))}
 
-        {/* Tombol "Lainnya" untuk buka drawer */}
         <button
           className={`bn-btn ${BN_MORE.includes(activePage) ? 'active' : ''}`}
           onClick={toggleMoreDrawer}

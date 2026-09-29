@@ -18,6 +18,7 @@ const PAGE_ICONS: Record<JournalPage, string> = {
   monthly: '🗓',
   news:    '📰',
   profile: '👤',
+  gallery: '📸',
 };
 
 const PAGE_LABELS: Record<JournalPage, string> = {
@@ -30,6 +31,7 @@ const PAGE_LABELS: Record<JournalPage, string> = {
   monthly: 'Monthly',
   news:    'News',
   profile: 'Profil',
+  gallery: 'Gallery',
 };
 
 export default function DemoBotNav() {

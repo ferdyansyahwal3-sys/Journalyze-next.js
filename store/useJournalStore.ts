@@ -3,12 +3,13 @@
 // store/useJournalStore.ts
 import { create } from 'zustand';
 import type { User } from '@supabase/supabase-js';
+import type { Trade } from '@/lib/types';
 
-export type JournalPage = 'home' | 'risk' | 'plan' | 'data' | 'filter' | 'weekly' | 'monthly' | 'news' | 'profile';
+export type JournalPage = 'home' | 'risk' | 'plan' | 'data' | 'filter' | 'weekly' | 'monthly' | 'news' | 'profile' | 'gallery';
 export type UserPlan = 'free' | 'basic' | 'pro' | 'elite';
 
 export const BN_MAIN: JournalPage[] = ['home', 'risk', 'plan', 'data', 'filter'];
-export const BN_MORE: JournalPage[] = ['weekly', 'monthly', 'news'];
+export const BN_MORE: JournalPage[] = ['weekly', 'monthly', 'news', 'gallery'];
 
 type Toast = { id: number; msg: string; type: 'success' | 'error' };
 type ConfirmState = { title: string; msg: string; confirmLabel: string; onConfirm: () => void } | null;
@@ -21,15 +22,12 @@ interface JournalState {
   setAuthOverlayVisible: (v: boolean) => void;
   setCloudLoading: (v: boolean) => void;
 
-  // Phase 13: display name dari tabel profiles
   displayName: string;
   setDisplayName: (n: string) => void;
 
-  // ── Plan ──
   userPlan: UserPlan;
   setPlan: (p: UserPlan) => void;
 
-  // ── Demo mode flag ──
   isDemoMode: boolean;
   setDemoMode: (v: boolean) => void;
 
@@ -57,6 +55,14 @@ interface JournalState {
   confirmModal: ConfirmState;
   showConfirmModal: (title: string, msg: string, confirmLabel: string, onConfirm: () => void) => void;
   closeConfirmModal: () => void;
+
+  // ── Trade Breakdown ────────────────────────────────────────────────────────
+  breakdownTrade: Trade | null;
+  breakdownList: Trade[];
+  breakdownIndex: number;
+  openBreakdown: (trade: Trade, list: Trade[]) => void;
+  closeBreakdown: () => void;
+  setBreakdownIndex: (i: number) => void;
 }
 
 export const useJournalStore = create<JournalState>((set, get) => ({
@@ -116,4 +122,26 @@ export const useJournalStore = create<JournalState>((set, get) => ({
   showConfirmModal: (title, msg, confirmLabel, onConfirm) =>
     set({ confirmModal: { title, msg, confirmLabel, onConfirm } }),
   closeConfirmModal: () => set({ confirmModal: null }),
+
+  // ── Breakdown ──────────────────────────────────────────────────────────────
+  breakdownTrade: null,
+  breakdownList: [],
+  breakdownIndex: 0,
+
+  openBreakdown: (trade, list) => {
+    const idx = list.findIndex((t) => t.id === trade.id);
+    set({
+      breakdownTrade: trade,
+      breakdownList: list,
+      breakdownIndex: idx >= 0 ? idx : 0,
+    });
+  },
+
+  closeBreakdown: () => set({ breakdownTrade: null, breakdownList: [], breakdownIndex: 0 }),
+
+  setBreakdownIndex: (i) => {
+    const { breakdownList } = get();
+    if (i < 0 || i >= breakdownList.length) return;
+    set({ breakdownTrade: breakdownList[i], breakdownIndex: i });
+  },
 }));

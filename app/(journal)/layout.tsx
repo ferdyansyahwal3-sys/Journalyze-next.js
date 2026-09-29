@@ -2,6 +2,7 @@
 import type { Metadata } from 'next';
 import { Cormorant_Garamond, Outfit, JetBrains_Mono } from 'next/font/google';
 import './home.css';
+import './breakdown.css';
 
 const cormorant = Cormorant_Garamond({
   subsets: ['latin'],

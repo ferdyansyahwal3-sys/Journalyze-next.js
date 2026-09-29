@@ -5,7 +5,7 @@
 'use client';
 
 import { useCallback, useMemo } from 'react';
-import { _sb, DELIVERY_BASE } from '@/lib/supabaseClient';
+import { _sb, _sbAdmin, DELIVERY_BASE } from '@/lib/supabaseClient';
 import { encodeDeliveryToken, genKeyString } from '@/lib/adminHelpers';
 import { useAdminStore, PAGE_SIZE } from '@/store/useAdminStore';
 import type { LicenseKey } from '@/lib/types';
@@ -125,12 +125,12 @@ export function useLicenseKeys() {
         if (qty === 1) {
           const key = keys[0];
           const token = encodeDeliveryToken(key, name);
-          const url = `${DELIVERY_BASE}/delivery.html?token=${token}&name=${encodeURIComponent(name)}`;
+          const url = `${DELIVERY_BASE}/delivery?token=${token}&name=${encodeURIComponent(name)}`;
           return { mode: 'single' as const, key, url };
         }
         const bulk = keys.map((k) => {
           const token = encodeDeliveryToken(k, name);
-          const url = `${DELIVERY_BASE}/delivery.html?token=${token}&name=${encodeURIComponent(name)}`;
+          const url = `${DELIVERY_BASE}/delivery?token=${token}&name=${encodeURIComponent(name)}`;
           return { key: k, url };
         });
         return { mode: 'bulk' as const, bulk };
@@ -141,6 +141,44 @@ export function useLicenseKeys() {
     },
     [loadKeys, showToast]
   );
+
+
+  const deleteKey = async (key: string): Promise<void> => {
+    try {
+      // 1. Cari user_id yang pakai key ini
+      const { data: keyData } = await _sbAdmin
+        .from('license_keys')
+        .select('used_by')
+        .eq('key', key)
+        .single();
+
+      const userId = keyData?.used_by;
+
+      // 2. Hapus semua data terkait user (kalau key sudah dipakai)
+      if (userId) {
+        // Hapus semua trades
+        await _sbAdmin.from('trades').delete().eq('user_id', userId);
+        // Hapus profile
+        await _sbAdmin.from('profiles').delete().eq('id', userId);
+        // Hapus auth user
+        await _sbAdmin.auth.admin.deleteUser(userId);
+      }
+
+      // 3. Hapus license key
+      const { error } = await _sbAdmin.from('license_keys').delete().eq('key', key);
+      if (error) throw error;
+
+      showToast(
+        userId
+          ? '🗑️ Key, akun & semua data trade berhasil dihapus'
+          : '🗑️ License key berhasil dihapus',
+        'success'
+      );
+      await loadKeys();
+    } catch (err: any) {
+      showToast('❌ Gagal hapus: ' + (err as Error).message, 'error');
+    }
+  };
 
   const confirmAction = useCallback(async () => {
     // admin.html baris 644-664
@@ -177,6 +215,7 @@ export function useLicenseKeys() {
   }, [pendingAction, setPendingAction, loadKeys, showToast]);
 
   return {
+    deleteKey,
     filteredKeys,
     pageKeys,
     stats,

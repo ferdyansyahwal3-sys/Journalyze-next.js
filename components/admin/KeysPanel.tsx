@@ -11,7 +11,7 @@ import { fmtDate, encodeDeliveryToken } from '@/lib/adminHelpers';
 import { DELIVERY_BASE } from '@/lib/supabaseClient';
 
 export default function KeysPanel({ active }: { active: boolean }) {
-  const { filteredKeys, pageKeys, stats, totalPages, goPage, loadKeys, generateKey } =
+  const { filteredKeys, pageKeys, stats, totalPages, goPage, loadKeys, generateKey, deleteKey } =
     useLicenseKeys();
   const searchQuery = useAdminStore((s) => s.searchQuery);
   const setSearchQuery = useAdminStore((s) => s.setSearchQuery);
@@ -27,6 +27,7 @@ export default function KeysPanel({ active }: { active: boolean }) {
   const [genBusy, setGenBusy] = useState(false);
   const [result, setResult] = useState<{ key: string; url: string } | null>(null);
   const [bulkResult, setBulkResult] = useState<{ key: string; url: string }[] | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -226,7 +227,7 @@ export default function KeysPanel({ active }: { active: boolean }) {
                     const status = k.is_revoked ? 'revoked' : k.is_used ? 'used' : 'unused';
                     const statusLabel = { revoked: '⛔ Dicabut', used: '✓ Aktif', unused: '○ Belum Dipakai' }[status];
                     const token = encodeDeliveryToken(k.key, k.customer_name || '');
-                    const url = `${DELIVERY_BASE}/delivery.html?token=${token}&name=${encodeURIComponent(k.customer_name || '')}`;
+                    const url = `${DELIVERY_BASE}/delivery?token=${token}&name=${encodeURIComponent(k.customer_name || '')}`;
                     const custEmail = k.profiles?.email;
                     const isBlocked = k.profiles?.is_blocked === true;
                     return (
@@ -258,6 +259,14 @@ export default function KeysPanel({ active }: { active: boolean }) {
                             </button>
                             <button className="act-btn act-url" title="Copy URL" onClick={() => quickCopy(url)}>
                               🔗
+                            </button>
+                            <button
+                              className="act-btn act-delete"
+                              title="Hapus key"
+                              onClick={() => setPendingDelete(k.key)}
+                              style={{ background: '#1a1a1a', border: '1px solid #444' }}
+                            >
+                              🗑️
                             </button>
                             {k.is_revoked ? (
                               <button
@@ -325,6 +334,38 @@ export default function KeysPanel({ active }: { active: boolean }) {
           )}
         </div>
       </div>
+      {/* Modal konfirmasi hapus */}
+      {pendingDelete && (
+        <div
+          style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:9000,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}
+          onClick={() => setPendingDelete(null)}
+        >
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-icon">🗑️</div>
+            <div className="modal-title">Hapus License Key?</div>
+            <div className="modal-desc">
+              Aksi ini tidak bisa dibatalkan.<br/>
+              Jika key sudah dipakai, akun journal terkait juga ikut dihapus.
+            </div>
+            <div className="modal-key">{pendingDelete}</div>
+            <div className="modal-btns">
+              <button className="modal-cancel" onClick={() => setPendingDelete(null)}>
+                Batal
+              </button>
+              <button
+                className="modal-confirm"
+                onClick={async () => {
+                  await deleteKey(pendingDelete);
+                  setPendingDelete(null);
+                }}
+              >
+                Ya, Hapus Permanen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -38,6 +38,21 @@ export function readFileAsBase64(file: File): Promise<string> {
   });
 }
 
+
+export function detectSesiFromBrokerTime(
+  brokerTime: string | null | undefined,
+  brokerOffsetToWib = 4,
+): 'Asia' | 'London' | 'US' | '' {
+  if (!brokerTime) return '';
+  const match = brokerTime.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return '';
+  const wibMin = ((parseInt(match[1],10)*60 + parseInt(match[2],10) + brokerOffsetToWib*60) % 1440 + 1440) % 1440;
+  const wibH   = Math.floor(wibMin/60);
+  if (wibH <= 8)  return 'Asia';
+  if (wibH <= 17) return 'London';
+  return 'US';
+}
+
 // ─────────────────────────────────────────────
 // OCR PROMPT (1:1 index.html line ~5293)
 // ─────────────────────────────────────────────
@@ -62,9 +77,10 @@ ATURAN KHUSUS:
 - Warna biru = Profit, merah = Lose
 - Hapus suffix 'm' dari pair
 - Ambil tanggal dari open time, bukan close time
+- open_time: jam open time format "HH:MM" 24 jam. Contoh: 2026.05.28 01:02:01 → "01:02". Jika tidak ada tulis null.
 - Jawab HANYA JSON, tanpa markdown, tanpa penjelasan:
 
-{"pair":"XAUUSD","posisi":"Buy","lot":0.01,"entry":4586.382,"close":4583.339,"sl":4583.339,"tp":4601.952,"result":"Lose","tanggal":"2026-01-13"}`;
+{"pair":"XAUUSD","posisi":"Buy","lot":0.01,"entry":4586.382,"close":4583.339,"sl":4583.339,"tp":4601.952,"result":"Lose","tanggal":"2026-01-13","open_time":"01:02"}`;
 
 // ─────────────────────────────────────────────
 // TYPES
@@ -79,6 +95,7 @@ export interface OcrResult {
   sl?: number | null;
   tp?: number | null;
   result?: string;
+  open_time?: string | null;
   tanggal?: string;
 }
 

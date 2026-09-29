@@ -11,7 +11,8 @@ import {
   type Currency,
 } from '@/lib/riskCalc';
 import type { Trade, DW } from '@/lib/types';
-import { usePhotoAnalysis, useFotoAnalisa, type OcrResult } from '@/hooks/usePhotoAnalysis';
+import { usePhotoAnalysis, useFotoAnalisa, type OcrResult, detectSesiFromBrokerTime } from '@/hooks/usePhotoAnalysis';
+import { useAiReflection } from '@/hooks/useAiReflection';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -144,6 +145,7 @@ function TradeModal({ form, setForm, onSave, onClose, currency, onOpenApiKey }: 
     if (parsed.sl    != null && parsed.sl)  next.sl = String(parsed.sl);
     if (parsed.tp    != null && parsed.tp)  next.tp = String(parsed.tp);
     if (parsed.tanggal) next.tanggal = parsed.tanggal;
+    if (parsed.open_time) { const s = detectSesiFromBrokerTime(parsed.open_time); if (s) next.sesi = s; }
     setForm(next);
   }, [setForm]);
 
@@ -612,6 +614,18 @@ export default function PageData({ active }: { active: boolean }) {
 
   const kurs   = liveRates.USD_IDR || 16462;
   const userId = currentUser?.id || null;
+
+  // ── AI Refleksi — pasang callback ke store setelah mount ────────────────────
+  const { triggerAiReflection } = useAiReflection();
+  const { setOnAfterSave } = useTradeStore();
+
+  useEffect(() => {
+    setOnAfterSave((trade, allTrades) => {
+      triggerAiReflection(trade, allTrades);
+    });
+    return () => setOnAfterSave(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [triggerAiReflection]);
 
   useEffect(() => {
     setMounted(true);

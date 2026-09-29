@@ -13,7 +13,8 @@ import Toast from './Toast';
 import ConfirmModal from './ConfirmModal';
 import PageHome from './PageHome';
 import dynamic from 'next/dynamic';
-const PageRisk = dynamic(() => import('./PageRisk'), { ssr: false });
+const PageRisk    = dynamic(() => import('./PageRisk'),    { ssr: false });
+const PageGallery = dynamic(() => import('./PageGallery'), { ssr: false });
 import PagePlan from './PagePlan';
 import PageData from './PageData';
 import PageFilter from './PageFilter';
@@ -26,6 +27,7 @@ import PageProfile from './PageProfile';
 import DemoBanner from './DemoBanner';
 import PlanLockOverlay from './PlanLockOverlay';
 import PaymentSuccessModal from './PaymentSuccessModal';
+import TradeBreakdown from './TradeBreakdown';
 
 function readApiKeyActive(): boolean {
   if (typeof window === 'undefined') return false;
@@ -54,11 +56,9 @@ export default function JournalApp() {
   const [notifGranted,  setNotifGranted]  = useState(false);
   const [showDemoPopup, setShowDemoPopup] = useState(false);
 
-  // Inject fake trades saat user free login
   useEffect(() => {
     if (currentUser && isFree) {
       useTradeStore.setState({ trades: FAKE_TRADES, loaded: true });
-      // Tampilkan popup demo saat pertama kali login sebagai free user
       const shownKey = `jz_demo_popup_shown_${currentUser.id}`;
       if (!sessionStorage.getItem(shownKey)) {
         setShowDemoPopup(true);
@@ -95,7 +95,6 @@ export default function JournalApp() {
     showToast(msg, type);
   }, [showToast]);
 
-  // Ambil email user untuk pre-fill di halaman order
   const userEmail = currentUser?.email || '';
 
   return (
@@ -103,10 +102,8 @@ export default function JournalApp() {
       <AuthOverlay />
       <Splash />
 
-      {/* Banner demo mode */}
       {currentUser && isFree && <DemoBanner />}
 
-      {/* Popup demo saat pertama login */}
       {showDemoPopup && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 200,
@@ -161,7 +158,6 @@ export default function JournalApp() {
         </div>
       )}
 
-      {/* Popup setelah bayar */}
       <PaymentSuccessModal />
 
       <Topbar
@@ -212,6 +208,14 @@ export default function JournalApp() {
           )}
         </div>
 
+        {/* PageGallery — dikunci untuk free & basic (sama seperti filter) */}
+        <div style={{ position: 'relative' }}>
+          <PageGallery active={activePage === 'gallery'} />
+          {activePage === 'gallery' && !canFilter && currentUser && (
+            <PlanLockOverlay feature="Gallery Foto Analisa" userEmail={userEmail} />
+          )}
+        </div>
+
         <PageProfile active={activePage === 'profile'} onOpenApiKey={() => setApiKeyOpen(true)} onOpenNotif={() => setNotifOpen(true)} />
       </div>
 
@@ -224,7 +228,6 @@ export default function JournalApp() {
       <ConfirmModal />
       <Toast />
 
-      {/* ApiKeyModal — dikunci untuk free & basic */}
       {canPhotoMT5 ? (
         <ApiKeyModal
           isOpen={apiKeyOpen}
@@ -283,6 +286,7 @@ export default function JournalApp() {
         )
       )}
 
+      <TradeBreakdown />
       <NotifModal
         isOpen={notifOpen}
         onClose={handleNotifClose}

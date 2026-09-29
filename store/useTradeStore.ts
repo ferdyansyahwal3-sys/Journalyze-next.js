@@ -1,9 +1,6 @@
 'use client'
 
 // store/useTradeStore.ts
-// Zustand store untuk trades & DW — pengganti variabel global `trades` dan `dwList`
-// di index.html. Semua komponen (PageData, PageFilter, PageWeekly, PageMonthly)
-// akan baca dari sini.
 import { create } from 'zustand';
 import type { Trade, DW } from '@/lib/types';
 import {
@@ -78,7 +75,7 @@ function tradeToDbRow(t: Trade, userId: string): Record<string, unknown> {
     rr: t.rr != null ? parseFloat(String(t.rr)) : null,
     strategi: strArr.length ? strArr : null,
     reason: t.reason || null, reason_fib: t.reasonFib || null, reason_custom: t.reasonCustom || null,
-    catatan: t.catatan || null, risk_level: t.riskLevel || null, emosi_kontrol: t.emosiKontrol || null,
+    catatan: t.catatan || null, risk_level: t.riskLevel || null, emosi_kontrol: t.emosiKontrol|| null,
     source: t.source || 'manual',
     photos: Array.isArray(t.photos) && t.photos.length ? t.photos : null,
     foto_analisa: Array.isArray(t.fotoAnalisa) && t.fotoAnalisa.length ? t.fotoAnalisa : null,
@@ -108,7 +105,7 @@ function dwToDbRow(dw: DW, userId: string): Record<string, unknown> {
   };
 }
 
-// ── recalcAll — 1:1 dengan index.html ─────────────────────────────────────
+// ── recalcAll ─────────────────────────────────────────────────────────────────
 
 export function recalcAll(
   trades: Trade[],
@@ -119,7 +116,6 @@ export function recalcAll(
 ): Trade[] {
   let initBal = idrToDisp(balanceIDR, currency);
 
-  // deduplicate
   const unique = [...new Map(trades.map((t) => [t.id, t])).values()];
 
   const sorted = [...unique].sort((a, b) => {
@@ -128,7 +124,6 @@ export function recalcAll(
     return seqOf(a) - seqOf(b);
   });
 
-  // DW lookup (manual only)
   const dwByDate: Record<string, { dep: number; wd: number }> = {};
   dwList.filter((d) => !d._auto).forEach((dw) => {
     if (!dwByDate[dw.tanggal]) dwByDate[dw.tanggal] = { dep: 0, wd: 0 };
@@ -143,7 +138,6 @@ export function recalcAll(
   let processedDates = new Set<string>();
 
   return sorted.map((t) => {
-    // Apply DW for this date (first trade of that date)
     if (!processedDates.has(t.tanggal)) {
       processedDates.add(t.tanggal);
       const dw = dwByDate[t.tanggal];
@@ -164,30 +158,29 @@ export function recalcAll(
   });
 }
 
-// ── Store ─────────────────────────────────────────────────────────────────
+// ── Store ─────────────────────────────────────────────────────────────────────
 
 interface TradeState {
   trades: Trade[];
   dwList: DW[];
   loaded: boolean;
 
-  // Load from localStorage
-  loadLocal: () => void;
+  // Callback dipanggil setelah addTrade / updateTrade berhasil
+  // Diset dari komponen (bukan import langsung) untuk hindari circular dep
+  onAfterSave: ((trade: Trade, allTrades: Trade[]) => void) | null;
+  setOnAfterSave: (fn: ((trade: Trade, allTrades: Trade[]) => void) | null) => void;
 
-  // Load from Supabase
+  loadLocal: () => void;
   loadCloud: (userId: string) => Promise<void>;
 
-  // CRUD trades
   addTrade: (trade: Trade, userId: string | null) => Promise<void>;
   updateTrade: (trade: Trade, userId: string | null) => Promise<void>;
   deleteTrade: (id: string, userId: string | null) => Promise<void>;
   resetTrades: (userId: string | null) => Promise<void>;
 
-  // CRUD DW
   addDW: (dw: DW, userId: string | null) => Promise<void>;
   deleteDW: (id: string, userId: string | null) => Promise<void>;
 
-  // Persist
   persistLocal: () => void;
 }
 
@@ -195,6 +188,9 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   trades: [],
   dwList: [],
   loaded: false,
+  onAfterSave: null,
+
+  setOnAfterSave: (fn) => set({ onAfterSave: fn }),
 
   loadLocal: () => {
     try {
@@ -226,7 +222,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   },
 
   addTrade: async (trade, userId) => {
-    const { trades } = get();
+    const { trades, onAfterSave } = get();
     const newTrades = [...trades, trade].sort((a, b) => {
       if (a.tanggal < b.tanggal) return -1;
       if (a.tanggal > b.tanggal) return 1;
@@ -239,9 +235,14 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         await _sb.from('trades').upsert(tradeToDbRow(trade, userId));
       } catch (e: unknown) { console.warn('[addTrade] cloud error:', (e as Error).message); }
     }
+    // Trigger AI refleksi di background setelah save berhasil
+    if (onAfterSave) {
+      try { onAfterSave(trade, newTrades); } catch { /* silent */ }
+    }
   },
 
   updateTrade: async (trade, userId) => {
+    const { onAfterSave } = get();
     const newTrades = get().trades.map((t) => t.id === trade.id ? trade : t);
     set({ trades: newTrades });
     get().persistLocal();
@@ -249,6 +250,10 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       try {
         await _sb.from('trades').upsert(tradeToDbRow(trade, userId));
       } catch (e: unknown) { console.warn('[updateTrade] cloud error:', (e as Error).message); }
+    }
+    // Trigger AI refleksi di background setelah update berhasil
+    if (onAfterSave) {
+      try { onAfterSave(trade, newTrades); } catch { /* silent */ }
     }
   },
 
@@ -304,7 +309,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   },
 }));
 
-// local helper (only used inside this file)
+// local helper
 function dwToDbRowLocal(row: Record<string, unknown>): DW {
   return dbRowToDW(row);
 }

@@ -18,6 +18,7 @@ const PAGE_LABELS: Record<JournalPage, string> = {
   monthly: 'Monthly',
   news:    'News',
   profile: 'Profil',
+  gallery: 'Gallery',
 };
 
 const ALL_TABS: JournalPage[] = [...BN_MAIN, ...BN_MORE];

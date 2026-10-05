@@ -106,6 +106,8 @@ function dwToDbRow(dw: DW, userId: string): Record<string, unknown> {
 }
 
 // ── recalcAll ─────────────────────────────────────────────────────────────────
+// P/L tiap trade memakai kurs yang dikunci saat trade disimpan (t.kurs).
+// Parameter `kurs` (kurs live) hanya jadi fallback untuk trade lama yang belum punya kurs.
 
 export function recalcAll(
   trades: Trade[],
@@ -146,7 +148,9 @@ export function recalcAll(
       }
     }
 
-    const pl = calcPL(t.pips || 0, t.lot || 0, t.pair, currency);
+    // Kurs per-trade (dikunci saat simpan). Kalau tidak ada → fallback ke kurs live.
+    const tradeKurs = t.kurs && t.kurs > 1000 ? t.kurs : kurs;
+    const pl = calcPL(t.pips || 0, t.lot || 0, t.pair, currency, tradeKurs);
     runProfit += pl;
     runBal += pl;
 
@@ -249,7 +253,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     if (userId) {
       try {
         await _sb.from('trades').upsert(tradeToDbRow(trade, userId));
-      } catch (e: unknown) { console.warn('[updateTrade] cloud error:', (e as Error).message); }
+      } catch (e: unknown) { console.warn('[updateTrade] cloud error:', (e as Error).message);}
     }
     // Trigger AI refleksi di background setelah update berhasil
     if (onAfterSave) {
@@ -264,7 +268,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     if (userId) {
       try {
         await _sb.from('trades').delete().eq('id', id);
-      } catch (e: unknown) { console.warn('[deleteTrade] cloud error:', (e as Error).message); }
+      } catch (e: unknown) { console.warn('[deleteTrade] cloud error:', (e as Error).message);}
     }
   },
 
@@ -276,7 +280,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       try {
         await _sb.from('trades').delete().eq('user_id', userId);
         await _sb.from('deposit_withdrawals').delete().eq('user_id', userId);
-      } catch (e: unknown) { console.warn('[resetTrades] cloud error:', (e as Error).message); }
+      } catch (e: unknown) { console.warn('[resetTrades] cloud error:', (e as Error).message);}
     }
   },
 

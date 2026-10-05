@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { _sb, _sbAdmin } from '@/lib/supabaseClient';
-import Script from 'next/script';
+import { _sb } from '@/lib/supabaseClient';
 
 const WA_BASE = `https://wa.me/6281311973602`;
 const WA_MSG_DEFAULT = encodeURIComponent('Halo, saya ingin info lebih lanjut tentang Journalyze 🙏');
@@ -101,8 +100,6 @@ export default function HomeApp() {
   const [openFaq, setOpenFaq]           = useState<number | null>(null);
   const [toastVisible, setToastVisible] = useState(false);
   const [toastData, setToastData]       = useState(TOASTS[0]);
-  const [pixelId, setPixelId]           = useState<string | null>(null);
-  const [pixelEnabled, setPixelEnabled] = useState(false);
   const [navScrolled, setNavScrolled]   = useState(false);
   const [user, setUser]                 = useState<{ email: string; name: string; initial: string } | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -136,18 +133,6 @@ export default function HomeApp() {
     return () => { clearInterval(id); clearTimeout(fid); };
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data } = await _sbAdmin.from('settings').select('key,value').in('key', ['pixel_id', 'pixel_enabled']);
-        if (!data) return;
-        const pid = data.find((r: {key:string}) => r.key === 'pixel_id')?.value || '';
-        const pen = data.find((r: {key:string}) => r.key === 'pixel_enabled')?.value === 'true';
-        if (pid) setPixelId(pid);
-        setPixelEnabled(pen);
-      } catch { /**/ }
-    })();
-  }, []);
 
   useEffect(() => {
     // Cek session saat ini
@@ -225,13 +210,6 @@ export default function HomeApp() {
 
   return (
     <>
-      {pixelId && pixelEnabled && (
-        <Script id="meta-pixel" strategy="afterInteractive" dangerouslySetInnerHTML={{ __html: `
-          !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
-          fbq('init','${pixelId}');fbq('track','PageView');
-        ` }} />
-      )}
-
       {/* ── NAVBAR ── */}
       <nav className={`home-navbar${navScrolled ? ' scrolled' : ''}`}>
         <a href="/home" className="nav-logo">Journal<em>yze</em><span className="logo-badge">v2.0</span></a>

@@ -55,6 +55,7 @@ export function detectSesiFromBrokerTime(
 
 // ─────────────────────────────────────────────
 // OCR PROMPT (1:1 index.html line ~5293)
+// Diperjelas: close = angka KEDUA di baris "entry → close", jangan tertukar dengan T/P.
 // ─────────────────────────────────────────────
 
 const OCR_PROMPT = `Kamu adalah sistem OCR untuk jurnal trading. Analisis screenshot MT4/MT5 ini.
@@ -66,11 +67,18 @@ Ekstrak data berikut:
 - posisi: Buy atau Sell
 - lot: angka lot (contoh: 0.01, 0.1)
 - entry: open price
-- close: close price (jika sudah ditutup)
+- close: close price (harga saat posisi ditutup)
 - sl: nilai S/L jika ada, null jika tidak ada
 - tp: nilai T/P jika ada, null jika tidak ada
 - result: Profit (warna biru/positif) atau Lose (warna merah/negatif)
 - tanggal: format YYYY-MM-DD dari open time (bukan close time). Contoh: 2026.01.13 → 2026-01-13
+
+CARA MEMBACA entry DAN close (PENTING):
+- Di MT5 mobile, harga tampil dalam satu baris dengan panah: "4137.93 → 4131.77".
+  Angka PERTAMA (sebelum panah) = entry. Angka KEDUA (setelah panah) = close.
+  Contoh itu berarti entry=4137.93 dan close=4131.77.
+- close BUKAN nilai T/P dan BUKAN nilai S/L. T/P dan S/L dibaca dari baris "S/L:" dan "T/P:" saja.
+- Untuk trade yang sudah ditutup, close WAJIB diisi. Isi null hanya jika benar-benar tidak ada angka setelah panah.
 
 ATURAN KHUSUS:
 - Angka P/L dengan spasi: -51 369.69 = -51369.69
@@ -80,7 +88,7 @@ ATURAN KHUSUS:
 - open_time: jam open time format "HH:MM" 24 jam. Contoh: 2026.05.28 01:02:01 → "01:02". Jika tidak ada tulis null.
 - Jawab HANYA JSON, tanpa markdown, tanpa penjelasan:
 
-{"pair":"XAUUSD","posisi":"Buy","lot":0.01,"entry":4586.382,"close":4583.339,"sl":4583.339,"tp":4601.952,"result":"Lose","tanggal":"2026-01-13","open_time":"01:02"}`;
+{"pair":"XAUUSD","posisi":"Sell","lot":0.01,"entry":4586.382,"close":4580.100,"sl":4590.250,"tp":4575.000,"result":"Profit","tanggal":"2026-01-13","open_time":"01:02"}`;
 
 // ─────────────────────────────────────────────
 // TYPES
@@ -174,7 +182,7 @@ export function usePhotoAnalysis() {
           try {
             const resp = await fetch(
               `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
-              { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: reqBody },
+              { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: reqBody},
             );
             if (!resp.ok) {
               const errData = await resp.json().catch(() => ({})) as { error?: { message?: string } };
@@ -248,8 +256,14 @@ export function usePhotoAnalysis() {
         parsed = JSON.parse(jsonMatch[0].trim());
       }
 
-      setAiStatus('✅ Data berhasil dibaca! Cek & lengkapi catatan/strategi/sesi.');
-      setAiDotState('success');
+      // Close Price wajib ada supaya pips & P/L bisa dihitung otomatis.
+      if (parsed.close == null) {
+        setAiStatus('⚠️ Data terbaca, tapi Close Price tidak ketemu — isi manual supaya P/L terhitung.');
+        setAiDotState('error');
+      } else {
+        setAiStatus('✅ Data berhasil dibaca! Cek & lengkapi catatan/strategi/sesi.');
+        setAiDotState('success');
+      }
       onResult(parsed);
 
     } catch (e) {

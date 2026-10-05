@@ -68,6 +68,16 @@ export default function JournalApp() {
   }, [currentUser, isFree]);
 
   useEffect(() => {
+    if (!currentUser) return;
+    try {
+      if (localStorage.getItem('jz_plan_expired') === '1') {
+        localStorage.removeItem('jz_plan_expired');
+        showToast('⚠️ Paket Basic kamu sudah berakhir. Upgrade untuk akses kembali.', 'error');
+      }
+    } catch {}
+  }, [currentUser]);
+
+  useEffect(() => {
     const saved = (localStorage.getItem('jz_theme') as 'dark' | 'light') || 'dark';
     document.documentElement.setAttribute('data-theme', saved);
     useJournalStore.setState({ theme: saved });

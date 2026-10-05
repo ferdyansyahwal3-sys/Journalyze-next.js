@@ -1,7 +1,8 @@
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useState, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { setPixelContext } from '@/hooks/usePixel';
 import './upgrade.css';
 
 const PAKETS = [
@@ -68,6 +69,15 @@ function UpgradeContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
+
+  // Meta Pixel: simpan konteks harga paket untuk aturan event (nilai otomatis).
+  // Pakai harga paket dari ?paket= jika ada, default paket Pro (149000).
+  useEffect(() => {
+    const paketParam = searchParams.get('paket');
+    const paket = PAKETS.find((p) => p.key === paketParam) || PAKETS.find((p) => p.key === 'pro');
+    const value = paket ? Number(paket.harga.replace(/\D/g, '')) : 149000;
+    setPixelContext({ value, content_name: 'Journalyze Premium' });
+  }, [searchParams]);
 
   const handlePilih = (key: string) => {
     setLoading(key);

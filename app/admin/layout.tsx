@@ -31,7 +31,7 @@ export const metadata: Metadata = {
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className={`${cormorant.variable} ${outfit.variable} ${jetbrains.variable}`}>
+    <div className={`admin-root ${cormorant.variable} ${outfit.variable} ${jetbrains.variable}`}>
       {children}
     </div>
   );

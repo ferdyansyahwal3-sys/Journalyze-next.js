@@ -32,7 +32,7 @@ export function useJournalAuth() {
         // Baca kolom plan langsung — sama dengan yang admin panel baca & set
         const { data: prof, error: profErr } = await _sb
           .from('profiles')
-          .select('is_blocked, display_name, notif_nickname, plan, plan_type')
+          .select('is_blocked, display_name, notif_nickname, plan, plan_type, plan_expires_at')
           .eq('id', user.id)
           .maybeSingle();
 
@@ -69,8 +69,35 @@ export function useJournalAuth() {
           ? (rawPlan as UserPlan)
           : 'free';
 
-        console.log('[Journalyze] Plan resolved:', resolvedPlan, '| raw:', rawPlan);
-        setPlan(resolvedPlan);
+        // ── Cek expiry paket ──
+        // plan_expires_at null = lifetime (pro/elite) atau belum pernah diset
+        const expiresAt = prof?.plan_expires_at;
+        const isExpired =
+          resolvedPlan !== 'free' && expiresAt
+            ? new Date(expiresAt) < new Date()
+            : false;
+
+        if (isExpired) {
+          // Downgrade di DB. Jika RLS menolak, state lokal tetap diturunkan
+          // dan cron (expire-plans) yang jadi sumber kebenaran di DB.
+          const { error: downgradeErr } = await _sb
+            .from('profiles')
+            .update({ plan: 'free', plan_type: 'free', plan_expires_at: null })
+            .eq('id', user.id);
+
+          if (downgradeErr) {
+            console.warn('[Journalyze] Client-side downgrade failed:', downgradeErr.message);
+          }
+
+          setPlan('free');
+          localStorage.setItem('jz_plan_expired', '1');
+          console.log('[Journalyze] Plan basic expired, downgraded to free');
+        } else {
+          console.log('[Journalyze] Plan resolved:', resolvedPlan, '| raw:', rawPlan);
+          setPlan(resolvedPlan);
+          // Hapus flag hanya jika user punya paket aktif (mis. sudah upgrade/perpanjang)
+          if (resolvedPlan !== 'free') localStorage.removeItem('jz_plan_expired');
+        }
 
       } catch (e: any) {
         console.warn('[Journalyze] profiles check skip:', e.message);

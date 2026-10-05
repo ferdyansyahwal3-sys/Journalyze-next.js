@@ -110,17 +110,28 @@ export function calcPips(entry: number, close: number, pair: string, result: str
   return result === 'Profit' ? pips : -pips;
 }
 
-export function calcPL(pips: number, lot: number, pair: string, cur: Currency): number {
+// kursOverride (opsional): kurs USD→IDR yang dikunci saat trade disimpan.
+// Kalau tidak diisi / tidak valid, pakai kurs live.
+// Hanya berpengaruh di mode IDR (CENT & USD tidak butuh kurs).
+// Semua kalkulasi intermediate pakai presisi penuh, pembulatan hanya di akhir.
+export function calcPL(
+  pips: number,
+  lot: number,
+  pair: string,
+  cur: Currency,
+  kursOverride?: number
+): number {
   if (!pips || !lot || !pair) return 0;
   const absPips = Math.abs(pips);
   const arah = pips >= 0 ? 1 : -1;
-  const kurs = liveRates.USD_IDR || 16462;
+  const kurs = kursOverride && kursOverride > 1000 ? kursOverride : (liveRates.USD_IDR || 16462);
   const pv = getPipValue(pair, cur);
+  const raw = arah * absPips * lot * pv;
   switch (cur) {
-    case 'IDR':  return Math.round(arah * absPips * lot * pv * kurs);
-    case 'CENT': return Math.round(arah * absPips * lot * pv * 10) / 10;
-    case 'USD':  return Math.round(arah * absPips * lot * pv * 100) / 100;
-    default:     return Math.round(arah * absPips * lot * pv * kurs);
+    case 'IDR':  return Math.round(raw * kurs);
+    case 'CENT': return Math.round(raw * 10) / 10;
+    case 'USD':  return Math.round(raw * 100) / 100;
+    default:     return Math.round(raw * kurs);
   }
 }
 
@@ -241,7 +252,7 @@ export function getLeverageHint(lev: number): string {
 
 // ── Rates cache ──
 export const RATES_CACHE_KEY = 'jz_rates_cache';
-export const RATES_CACHE_TTL = 6 * 60 * 60 * 1000;
+export const RATES_CACHE_TTL = 3 * 60 * 60 * 1000; // kurs di-refresh tiap 3 jam
 
 export function buildRatesTicker(cache: Record<string, number>, stale = false): {
   items: { p: string; r: string }[];
@@ -253,7 +264,9 @@ export function buildRatesTicker(cache: Record<string, number>, stale = false): 
     { p: 'GBP/IDR', r: Math.round(cache.GBP_IDR || 20500).toLocaleString('id-ID') },
     { p: 'JPY/IDR', r: (cache.JPY_IDR || 108).toFixed(1) },
   ];
-  const age = cache.ts ? Math.round((Date.now() - cache.ts) / 60000) : null;
+  // srcTs = waktu update asli dari sumber kurs (kalau ada), supaya label jujur soal umur data
+  const refTs = cache.srcTs || cache.ts;
+  const age = refTs ? Math.round((Date.now() - refTs) / 60000) : null;
   const ageStr = age !== null ? (age < 60 ? age + 'm lalu' : Math.round(age / 60) + 'j lalu') : '—';
   return { items, timeLabel: (stale ? 'Offline: ' : '') + ageStr };
 }

@@ -3,8 +3,10 @@
 //  Ported from HTML version → Next.js App Router
 // ════════════════════════════════════════════════════════════
 
-const CACHE_NAME = 'journalyze-v2';
-const CACHE_VERSION = '1.5.0'; // Fix: bypass SW untuk /api/ routes
+// v3: nama cache dinaikkan supaya cache lama yang berisi chunk dev basi
+// (penyebab "Cannot read properties of undefined (reading 'call')") ikut terhapus saat activate.
+const CACHE_NAME = 'journalyze-v3';
+const CACHE_VERSION = '1.6.0'; // Fix: jangan cache chunk /_next/static/ yang tidak ber-hash (mode dev)
 
 const STATIC_ASSETS = [
   '/',
@@ -38,6 +40,21 @@ const NEXT_INTERNAL_PATTERNS = [
   '/_next/webpack-hmr',
   '/__nextjs',
 ];
+
+// Mode dev (localhost / IP lokal): chunk Next.js namanya TIDAK ber-hash dan isinya berubah
+// setiap kali kode diedit, jadi tidak boleh di-cache sama sekali.
+const DEV_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', '[::1]'];
+const IS_LOCAL_HOST =
+  DEV_HOSTS.indexOf(self.location.hostname) !== -1 ||
+  self.location.hostname.endsWith('.local') ||
+  /^(10|192\.168|172\.(1[6-9]|2\d|3[01]))\./.test(self.location.hostname);
+
+// File production Next.js selalu punya hash konten di namanya (contoh: 2117-e8ab78786470d94c.js).
+// Hanya file seperti itu yang aman di-cache "Cache First".
+function isHashedAsset(pathname) {
+  const file = pathname.split('/').pop() || '';
+  return /[0-9a-f]{8,}/.test(file);
+}
 
 // ── Install ──
 self.addEventListener('install', (event) => {
@@ -74,6 +91,9 @@ self.addEventListener('fetch', (event) => {
   // API routes Next.js — bypass SW sepenuhnya, selalu network
   if (NO_CACHE_PATHS.some((p) => url.pathname.startsWith(p))) return;
 
+  // Mode dev: semua file /_next/ langsung ke network, tanpa cache
+  if (IS_LOCAL_HOST && url.pathname.startsWith('/_next/')) return;
+
   // CDN → Cache First
   if (CDN_PATTERNS.some((p) => url.hostname.includes(p))) {
     event.respondWith(
@@ -90,8 +110,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Next.js static chunks → Cache First
+  // Next.js static chunks → Cache First, HANYA untuk file ber-hash (production)
   if (url.pathname.startsWith('/_next/static/')) {
+    if (!isHashedAsset(url.pathname)) return; // tidak ber-hash → selalu network
     event.respondWith(
       caches.open(CACHE_NAME).then((cache) =>
         cache.match(event.request).then((cached) => {

@@ -59,13 +59,13 @@ const METODE_LIST = [
 
 // ── REASON_MAP ────────────────────────────────────────────────────────────────
 const REASON_MAP: Record<string, { v: string; l: string }[]> = {
-  SMC:       [{ v: 'BOS', l: 'BOS' }, { v: 'CHoCH', l: 'CHoCH' }, { v: 'FVG', l: 'FVG' }, { v: 'OB', l: 'OB' }, { v: 'Liquidity Grab', l: 'Liq.Grab' }, { v: 'MSS', l: 'MSS' }],
-  SNR:       [{ v: 'Support', l: 'Support' }, { v: 'Resisten', l: 'Resisten' }, { v: 'SBR', l: 'SBR' }, { v: 'RBS', l: 'RBS' }],
-  SND:       [{ v: 'Supply Zone', l: 'Supply' }, { v: 'Demand Zone', l: 'Demand' }, { v: 'Flip Zone', l: 'Flip Zone' }],
+  SMC:       [{ v: 'BOS', l: 'BOS' }, { v: 'CHoCH', l: 'CHoCH' }, { v: 'FVG', l: 'FVG' }, { v:'OB', l: 'OB' }, { v: 'Liquidity Grab', l: 'Liq.Grab' }, { v: 'MSS', l: 'MSS' }],
+  SNR:       [{ v: 'Support', l: 'Support' }, { v: 'Resisten', l: 'Resisten' }, { v: 'SBR', l:'SBR' }, { v: 'RBS', l: 'RBS' }],
+  SND:       [{ v: 'Supply Zone', l: 'Supply' }, { v: 'Demand Zone', l: 'Demand' }, { v: 'FlipZone', l: 'Flip Zone' }],
   ICT:       [{ v: 'Killzone', l: 'Killzone' }, { v: 'SIBI/BISI', l: 'SIBI/BISI' }, { v: 'Liquidity', l: 'Liquidity' }, { v: 'Breaker Block', l: 'Breaker' }, { v: 'IPDA', l: 'IPDA' }],
   ELMETHOD:  [{ v: 'Agresif Entry', l: 'Agresif' }, { v: 'Konfirmasi Entry', l: 'Konfirmasi' }, { v: 'Setup High', l: 'Setup High' }, { v: 'Setup Low', l: 'Setup Low' }],
-  ALCHEMIST: [{ v: 'Liquidity Sweep', l: 'Liq.Sweep' }, { v: 'MSS', l: 'MSS' }, { v: 'BOS', l: 'BOS' }, { v: 'OB Retest', l: 'OB Retest' }, { v: 'FVG Fill', l: 'FVG Fill' }],
-  SINYAL:    [{ v: 'Sinyal Komunitas', l: 'Komunitas' }, { v: 'Sinyal Provider', l: 'Provider' }, { v: 'Copy Trade', l: 'Copy Trade' }],
+  ALCHEMIST: [{ v: 'Liquidity Sweep', l: 'Liq.Sweep' }, { v: 'MSS', l: 'MSS' }, { v: 'BOS', l:'BOS' }, { v: 'OB Retest', l: 'OB Retest' }, { v: 'FVG Fill', l: 'FVG Fill' }],
+  SINYAL:    [{ v: 'Sinyal Komunitas', l: 'Komunitas' }, { v: 'Sinyal Provider', l: 'Provider'}, { v: 'Copy Trade', l: 'Copy Trade' }],
   TRENDLINE: [{ v: 'Trend Bounce', l: 'Bounce' }, { v: 'Trend Break', l: 'Break' }, { v: 'Channel', l: 'Channel' }],
   FIBONACCI: [],
   DOJI:      [{ v: 'Reversal Doji', l: 'Reversal' }, { v: 'Indecision', l: 'Indecision' }, { v: 'Pin Bar', l: 'Pin Bar' }],
@@ -84,10 +84,11 @@ interface TradeForm {
   riskLevel: string; emosiKontrol: string;
   reason: string; reasonFib: string; reasonCustom: string;
   fotoAnalisa: string[];
+  kursLocked: string;   // kurs yang sudah terkunci di trade (hanya saat edit). Kosong = trade baru → kurs live saat simpan.
 }
 
 function emptyForm(): TradeForm {
-  return { id: '', tanggal: todayStr(), sesi: '', pair: '', posisi: '', lot: '', entry: '', close: '', sl: '', tp: '', result: '', catatan: '', metode: [], riskLevel: '', emosiKontrol: '', reason: '', reasonFib: '', reasonCustom: '', fotoAnalisa: [] };
+  return { id: '', tanggal: todayStr(), sesi: '', pair: '', posisi: '', lot: '', entry: '', close: '', sl: '', tp: '', result: '', catatan: '', metode: [], riskLevel: '', emosiKontrol: '', reason: '', reasonFib: '', reasonCustom: '', fotoAnalisa: [], kursLocked: '' };
 }
 
 function tradeToForm(t: Trade): TradeForm {
@@ -100,6 +101,7 @@ function tradeToForm(t: Trade): TradeForm {
     riskLevel: t.riskLevel, emosiKontrol: t.emosiKontrol,
     reason: t.reason, reasonFib: t.reasonFib, reasonCustom: t.reasonCustom,
     fotoAnalisa: t.fotoAnalisa || [],
+    kursLocked: t.kurs && t.kurs > 1000 ? String(t.kurs) : '',
   };
 }
 
@@ -113,9 +115,15 @@ function TradeModal({ form, setForm, onSave, onClose, currency, onOpenApiKey }: 
   currency: Currency;
   onOpenApiKey: () => void;   // ← dipanggil saat API key belum diset
 }) {
-  const kurs   = liveRates.USD_IDR || 16462;
   const isEdit = !!form.id;
   const set    = (k: keyof TradeForm, v: string | string[]) => setForm({ ...form, [k]: v });
+
+  // Kurs untuk preview: trade yang sedang diedit memakai kurs yang sudah terkunci,
+  // trade baru memakai kurs live. Harus sama dengan logika kursSnap di handleSaveTrade.
+  const liveKurs   = liveRates.USD_IDR || 16462;
+  const lockedN    = parseNum(form.kursLocked);
+  const kursLocked = lockedN != null && lockedN > 1000;
+  const kurs       = kursLocked ? (lockedN as number) : liveKurs;
 
   // ── ref untuk form terbaru (agar closure di useEffect tidak stale) ─────────
   const formRef = useRef(form);
@@ -181,7 +189,7 @@ function TradeModal({ form, setForm, onSave, onClose, currency, onOpenApiKey }: 
   })();
   const reasonLabel = '📌 Reason — ' + selectedMetode
     .filter(m => !NO_REASON.includes(m))
-    .map(m => m === 'FIBONACCI' ? 'FIB' : m === 'ELMETHOD' ? 'EL' : m === 'ALCHEMIST' ? 'ALCH' : m)
+    .map(m => m === 'FIBONACCI' ? 'FIB' : m === 'ELMETHOD' ? 'EL' : m === 'ALCHEMIST' ? 'ALCH': m)
     .join(', ');
 
   const toggleMetode = (v: string) => {
@@ -218,8 +226,8 @@ function TradeModal({ form, setForm, onSave, onClose, currency, onOpenApiKey }: 
   // ── Live preview calc ─────────────────────────────────────────────────────
   const entry = parseNum(form.entry), close = parseNum(form.close);
   const sl    = parseNum(form.sl),    tp    = parseNum(form.tp), lot = parseNum(form.lot);
-  const pips  = entry && close && form.pair && form.result ? calcPips(entry, close, form.pair, form.result) : null;
-  const pl    = pips != null && lot && form.pair ? calcPL(pips, lot, form.pair, currency) : null;
+  const pips  = entry && close && form.pair && form.result ? calcPips(entry, close, form.pair,form.result) : null;
+  const pl    = pips != null && lot && form.pair ? calcPL(pips, lot, form.pair, currency, kurs) : null;
 
   let rrVal: number | null = null;
   let rrSrc = '';
@@ -235,7 +243,7 @@ function TradeModal({ form, setForm, onSave, onClose, currency, onOpenApiKey }: 
       }
     } else { rrVal = form.result === 'Profit' ? 2.0 : 0.5; rrSrc = 'Default'; }
   }
-  const rrColor = rrVal != null ? (rrVal >= 1 ? 'var(--green)' : rrVal >= 0.5 ? 'var(--gold2)' : 'var(--red)') : 'inherit';
+  const rrColor = rrVal != null ? (rrVal >= 1 ? 'var(--green)' : rrVal >= 0.5 ? 'var(--gold2)': 'var(--red)') : 'inherit';
 
   // ── dot color sesuai state (1:1 index.html) ───────────────────────────────
   const dotColor = aiDotState === 'success' ? 'var(--green)'
@@ -520,7 +528,7 @@ function TradeModal({ form, setForm, onSave, onClose, currency, onOpenApiKey }: 
             <div className="calc-row">
               <span className="calc-lbl">🔒 Kurs dikunci</span>
               <span className="calc-val" id="prev-kurs" style={{ fontSize: '10px', color: 'var(--gold)' }}>
-                Rp {Math.round(kurs).toLocaleString('id-ID')}
+                Rp {kurs.toLocaleString('id-ID', { maximumFractionDigits: 2 })}
               </span>
             </div>
             <div className="calc-row">
@@ -572,7 +580,7 @@ function DWModal({ currency, onSave, onClose }: {
         </div>
         <div className="modal-body">
           <div className="frow f1" style={{ marginBottom: '10px' }}>
-            <div className="fg"><label className="flabel">📅 Tanggal</label><input type="date" className="finput" value={tgl} onChange={e => setTgl(e.target.value)} /></div>
+            <div className="fg"><label className="flabel">📅 Tanggal</label><input type="date"className="finput" value={tgl} onChange={e => setTgl(e.target.value)} /></div>
           </div>
           <div className="frow">
             <div className="fg"><label className="flabel">Deposit ({curLabel})</label><input type="number" className="finput" value={dep} placeholder="0" step="any" min="0" onChange={e => setDep(e.target.value)} /></div>
@@ -694,7 +702,7 @@ export default function PageData({ active }: { active: boolean }) {
   const subLabel = !hasData
     ? 'Saldo awal belum diset di tab Trading Plan'
     : stats.total === 0 ? 'Belum ada trade — saldo awal ' + fmtDispCur(balCur, currency)
-    : `Saldo: ${fmtDispCur(currentCur, currency)} (${totalPLcur >= 0 ? '+' : ''}${((totalPLcur / balCur) * 100).toFixed(2)}% dari modal)`;
+    : `Saldo: ${fmtDispCur(currentCur, currency)} (${totalPLcur >= 0 ? '+' : ''}${((totalPLcur/ balCur) * 100).toFixed(2)}% dari modal)`;
   const subLabelColor = !hasData || stats.total === 0 ? 'var(--text3)' : totalPLcur > 0 ? 'var(--green)' : totalPLcur < 0 ? 'var(--red)' : 'var(--text3)';
 
   const rekapHarian = useMemo(() => {
@@ -718,8 +726,8 @@ export default function PageData({ active }: { active: boolean }) {
     const { tanggal, lot, entry, close, pair, posisi, result } = form;
     if (!tanggal)                              { showToast('Tanggal harus diisi',   'error'); return; }
     if (!parseNum(lot) || (parseNum(lot)||0) <= 0) { showToast('Lot harus diisi',  'error'); return; }
-    if (parseNum(entry) === null)              { showToast('Entry price harus diisi','error'); return; }
-    if (parseNum(close) === null)              { showToast('Close price harus diisi','error'); return; }
+    if (parseNum(entry) === null)              { showToast('Entry price harus diisi','error');return; }
+    if (parseNum(close) === null)              { showToast('Close price harus diisi','error');return; }
     if (!pair)                                 { showToast('Pilih pair',            'error'); return; }
     if (!posisi)                               { showToast('Pilih posisi',          'error'); return; }
     if (!result)                               { showToast('Pilih result',          'error'); return; }
@@ -727,7 +735,12 @@ export default function PageData({ active }: { active: boolean }) {
     const entryN = parseNum(entry)!, closeN = parseNum(close)!;
     const slN    = parseNum(form.sl), tpN = parseNum(form.tp), lotN = parseNum(lot)!;
     const pips   = calcPips(entryN, closeN, pair, result);
-    const kursSnap = liveRates.USD_IDR || 16462;
+
+    // Kurs dikunci ke trade dengan presisi penuh (tidak dibulatkan):
+    // - trade baru → kurs live saat simpan
+    // - edit trade → pertahankan kurs yang sudah terkunci sebelumnya
+    const prevKurs = form.id ? trades.find(t => t.id === form.id)?.kurs : null;
+    const kursSnap = prevKurs && prevKurs > 1000 ? prevKurs : (liveRates.USD_IDR || 16462);
 
     let rrValue: number | null = null;
     if (slN && tpN) {
@@ -748,7 +761,7 @@ export default function PageData({ active }: { active: boolean }) {
       metode:       form.metode.join(', '), strategi: form.metode.join(', '),
       reason:       form.reason, reasonFib: form.reasonFib, reasonCustom: form.reasonCustom,
       catatan:      form.catatan, riskLevel: form.riskLevel, emosiKontrol: form.emosiKontrol,
-      source:       'manual', photos: existing?.photos || [], fotoAnalisa: form.fotoAnalisa || [],
+      source:       'manual', photos: existing?.photos || [], fotoAnalisa: form.fotoAnalisa ||[],
     };
 
     if (isEdit) { await updateTrade(trade, userId); showToast('Trade diperbarui ✓', 'success'); }
@@ -763,7 +776,7 @@ export default function PageData({ active }: { active: boolean }) {
 
   const handleResetTrades = () => {
     setUndoSnapshot([...trades]);
-    showConfirmModal('🗑️ Reset Data Trading', 'Semua data trade akan dihapus permanen.', 'Reset Sekarang',
+    showConfirmModal('🗑️ Reset Data Trading', 'Semua data trade akan dihapus permanen.', 'ResetSekarang',
       async () => { await resetTrades(userId); showToast('Data direset', 'success'); });
   };
 
@@ -860,7 +873,7 @@ export default function PageData({ active }: { active: boolean }) {
                 </select>
               </div>
               <div className="selwrap">
-                <select className="fselect" id="f-result-filter" value={resultFilter} style={{ width: 'auto', padding: '3px 18px 3px 7px', fontSize: '8.5px' }} onChange={e => setResultFilter(e.target.value)}>
+                <select className="fselect" id="f-result-filter" value={resultFilter} style={{width: 'auto', padding: '3px 18px 3px 7px', fontSize: '8.5px' }} onChange={e => setResultFilter(e.target.value)}>
                   <option value="">Semua</option>
                   <option value="Profit">Profit</option>
                   <option value="Lose">Lose</option>
@@ -886,12 +899,12 @@ export default function PageData({ active }: { active: boolean }) {
                     const bulan  = t.tanggal ? new Date(t.tanggal + 'T00:00:00').toLocaleString('id-ID', { month: 'long' }) : '—';
                     const runProfit = filteredTrades.slice(0, i + 1).reduce((s, x) => s + (x._pl || 0), 0);
                     const metodeStr = t.metode || t.strategi || '';
-                    const rrColor = t.rr != null ? (t.rr >= 1 ? 'var(--green)' : t.rr >= 0.5 ? 'var(--gold2)' : 'var(--red)') : 'var(--text3)';
+                    const rrColor = t.rr != null ? (t.rr >= 1 ? 'var(--green)' : t.rr >= 0.5 ?'var(--gold2)' : 'var(--red)') : 'var(--text3)';
                     const rlBg = t.riskLevel === 'HIGH RISK' ? 'rgba(232,64,64,0.12)' : t.riskLevel === 'LOW RISK' ? 'var(--green-bg)' : 'rgba(201,168,76,0.12)';
                     const rlBd = t.riskLevel === 'HIGH RISK' ? 'var(--red-bd)' : t.riskLevel === 'LOW RISK' ? 'var(--green-bd)' : 'var(--gold-bd)';
                     const rlCl = t.riskLevel === 'HIGH RISK' ? 'var(--red)' : t.riskLevel === 'LOW RISK' ? 'var(--green)' : 'var(--gold)';
                     const emBg = t.emosiKontrol === 'Emosi' ? 'rgba(232,64,64,0.12)' : t.emosiKontrol === 'Aman' ? 'var(--green-bg)' : 'rgba(96,165,250,0.12)';
-                    const emBd = t.emosiKontrol === 'Emosi' ? 'var(--red-bd)' : t.emosiKontrol === 'Aman' ? 'var(--green-bd)' : 'rgba(96,165,250,0.3)';
+                    const emBd = t.emosiKontrol === 'Emosi' ? 'var(--red-bd)' : t.emosiKontrol=== 'Aman' ? 'var(--green-bd)' : 'rgba(96,165,250,0.3)';
                     const emCl = t.emosiKontrol === 'Emosi' ? 'var(--red)' : t.emosiKontrol === 'Aman' ? 'var(--green)' : 'var(--blue)';
                     const photos = (t.photos || []).filter(Boolean);
                     return (
@@ -985,7 +998,7 @@ export default function PageData({ active }: { active: boolean }) {
                           <td style={{ fontSize: '10px' }}>{fmtDate(dw.tanggal)}</td>
                           <td style={{ color: 'var(--green)', fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 700 }}>{dw.deposit ? '+' + fmt(depDisp) : '—'}</td>
                           <td style={{ color: 'var(--red)',   fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 700 }}>{dw.withdraw ? '-' + fmt(wdDisp) : '—'}</td>
-                          <td><button className="btn btn-danger btn-sm" style={{ fontSize: '9px', padding: '1px 5px' }} onClick={() => showConfirmModal('Hapus', 'Hapus entri ini?', 'Hapus', () => deleteDW(dw.id, userId))}>✕</button></td>
+                          <td><button className="btn btn-danger btn-sm" style={{ fontSize: '9px', padding: '1px 5px' }} onClick={() => showConfirmModal('Hapus', 'Hapus entri ini?', 'Hapus',() => deleteDW(dw.id, userId))}>✕</button></td>
                         </tr>
                       );
                     })

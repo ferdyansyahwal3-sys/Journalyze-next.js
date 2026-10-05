@@ -3,6 +3,7 @@
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useState, useEffect, Suspense } from 'react';
 import { _sb } from '@/lib/supabaseClient';
+import { usePixel } from '@/hooks/usePixel';
 import './checkout.css';
 
 const PAKET_DATA: Record<string, {
@@ -83,6 +84,7 @@ function formatRupiah(amount: number) {
 function CheckoutContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { fireTrigger } = usePixel();
 
   const paketKey = searchParams.get('paket') || 'pro';
   const paket = PAKET_DATA[paketKey] || PAKET_DATA.pro;
@@ -194,6 +196,10 @@ function CheckoutContent() {
     }
     setLoading(true);
     setErrorMsg('');
+
+    // Meta Pixel: InitiateCheckout (sebelum fetch create-transaction)
+    fireTrigger('pay_click', { value: finalAmount, content_name: paket.label });
+
     try {
       const res = await fetch('/api/midtrans/create-transaction', {
         method: 'POST',
@@ -212,7 +218,11 @@ function CheckoutContent() {
       }
       setLoading(false);
       window.snap.pay(data.token, {
-        onSuccess: () => router.push('/journal?payment=success'),
+        onSuccess: async () => {
+          // Meta Pixel: Purchase — wajib fire SEBELUM router.push
+          await fireTrigger('payment_success', { value: Number(data.final_amount) || finalAmount, content_name: paket.label, eventId: data.order_id });
+          router.push('/journal?payment=success');
+        },
         onPending: () => router.push('/journal?payment=pending'),
         onError: () => setErrorMsg('Pembayaran gagal. Silakan coba lagi.'),
         onClose: () => {},
@@ -225,7 +235,7 @@ function CheckoutContent() {
 
   if (!authChecked) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#080808' }}>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent:'center', background: '#080808' }}>
         <div style={{ color: '#C9A84C', fontSize: 14, fontFamily: 'JetBrains Mono, monospace' }}>Memuat...</div>
       </div>
     );
@@ -406,7 +416,7 @@ function CheckoutContent() {
               </div>
 
               {isPremium ? (
-                <div className="co-error" style={{ borderColor: 'rgba(201,168,76,0.3)', color: '#C9A84C', background: 'rgba(201,168,76,0.08)' }}>
+                <div className="co-error" style={{ borderColor: 'rgba(201,168,76,0.3)', color:'#C9A84C', background: 'rgba(201,168,76,0.08)' }}>
                   ⭐ Akun ini sudah premium. Tidak perlu bayar lagi.
                 </div>
               ) : (
@@ -442,7 +452,7 @@ function CheckoutContent() {
 export default function CheckoutPage() {
   return (
     <Suspense fallback={
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#080808' }}>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent:'center', background: '#080808' }}>
         <div style={{ color: '#C9A84C', fontSize: 14, fontFamily: 'JetBrains Mono, monospace' }}>Memuat...</div>
       </div>
     }>

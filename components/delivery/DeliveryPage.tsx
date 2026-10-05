@@ -1,44 +1,75 @@
 // components/delivery/DeliveryPage.tsx
-// Dipindah dari delivery.html baris 136-298 (markup) + baris 330-357
-// (baca token/legacy params dari URL). Logic decode token 100% sama,
-// termasuk backward-compat untuk URL lama (?key=&name=).
+// Refactor: tidak lagi decode token sendiri — semua validasi ada di server
+// (app/delivery/page.tsx). Komponen ini hanya render berdasarkan props.
 'use client';
 
-import { useSearchParams } from 'next/navigation';
-import { decodeDeliveryToken } from '@/lib/deliveryToken';
 import { useRevealOnScroll } from '@/hooks/useRevealOnScroll';
 import LicenseKeyBox from './LicenseKeyBox';
 import StepCard from './StepCard';
 
-export default function DeliveryPage() {
-  const params = useSearchParams();
-  const token = params.get('token');
-  const legacyKey = params.get('key'); // backward compat URL lama
-  const legacyName = params.get('name');
+type DeliveryStatus = 'valid' | 'used' | 'revoked' | 'invalid';
 
-  let licenseKey = 'TIDAK DITEMUKAN';
-  let customerName = '';
-  let isExpired = false;
+interface Props {
+  status: DeliveryStatus;
+  licenseKey?: string;
+  customerName?: string;
+}
 
-  if (token) {
-    const result = decodeDeliveryToken(token);
-    if (!result) {
-      licenseKey = 'TOKEN TIDAK VALID';
-    } else {
-      licenseKey = result.key;
-      customerName = result.name || '';
-      isExpired = result.expired;
-    }
-  } else if (legacyKey) {
-    licenseKey = legacyKey;
-    customerName = legacyName || '';
-  }
+function ErrorPage({ title, desc }: { title: string; desc: string }) {
+  return (
+    <section
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'column',
+        gap: 12,
+        padding: '2rem',
+        textAlign: 'center',
+      }}
+    >
+      <div style={{ fontSize: 48 }}>🔒</div>
+      <h2 style={{ margin: 0 }}>{title}</h2>
+      <p style={{ opacity: 0.6, maxWidth: 360, margin: 0 }}>{desc}</p>
+    </section>
+  );
+}
 
+export default function DeliveryPage({ status, licenseKey = '', customerName = '' }: Props) {
   useRevealOnScroll([licenseKey]);
 
+  if (status === 'invalid') {
+    return (
+      <ErrorPage
+        title="Link Tidak Valid"
+        desc="Link delivery ini tidak valid atau sudah rusak. Hubungi admin jika kamu yakin sudah membeli."
+      />
+    );
+  }
+
+  if (status === 'revoked') {
+    return (
+      <ErrorPage
+        title="Akses Dicabut"
+        desc="License key ini telah dinonaktifkan. Hubungi admin untuk informasi lebih lanjut."
+      />
+    );
+  }
+
+  if (status === 'used') {
+    return (
+      <ErrorPage
+        title="Akses Sudah Digunakan"
+        desc={`License key ${licenseKey} sudah diaktifkan ke akun lain. Hubungi admin jika ini bukan kamu.`}
+      />
+    );
+  }
+
+  // status === 'valid'
   return (
     <>
-      {/* HERO — delivery.html baris 138-171 */}
+      {/* HERO */}
       <section className="hero">
         <div className="hero-grid"></div>
         <div className="hero-glow"></div>
@@ -84,7 +115,7 @@ export default function DeliveryPage() {
         </div>
       </section>
 
-      {/* ACCESS SECTION — delivery.html baris 173-287 */}
+      {/* ACCESS SECTION */}
       <section className="access-sec" id="akses">
         <div className="access-inner">
           <div className="reveal" style={{ marginBottom: 48 }}>
@@ -97,7 +128,7 @@ export default function DeliveryPage() {
             <p className="sec-sub">Ikuti langkah-langkah di bawah ini. Simpan halaman ini baik-baik.</p>
           </div>
 
-          <LicenseKeyBox licenseKey={licenseKey} customerName={customerName} isExpired={isExpired} />
+          <LicenseKeyBox licenseKey={licenseKey} customerName={customerName} isExpired={false} />
 
           <div className="steps-wrap reveal">
             <StepCard
@@ -140,7 +171,7 @@ export default function DeliveryPage() {
         </div>
       </section>
 
-      {/* FOOTER — delivery.html baris 290-297 */}
+      {/* FOOTER */}
       <footer className="footer-sec">
         <div className="footer-logo">
           Journal<em>yze</em>

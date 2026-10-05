@@ -1,6 +1,8 @@
 // app/layout.tsx — root layout (WAJIB ada, satu-satunya tempat <html>/<body suppressHydrationWarning>)
 import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
+import PixelTracker from '@/components/PixelTracker';
+import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Journalyze',
@@ -38,59 +40,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           Kalau nanti kamu buat globals.css, pindahkan blok ini ke sana
           dan hapus tag <style> ini.
         */}
-        <style>{`
-          /* ── Reset dasar ── */
-          *, *::before, *::after { box-sizing: border-box; }
-          html, body { margin: 0; padding: 0; height: 100%; }
-
-          /* ── CSS custom property safe area — bisa dipakai di seluruh app ── */
-          :root {
-            --safe-top:    env(safe-area-inset-top,    0px);
-            --safe-bottom: env(safe-area-inset-bottom, 0px);
-            --safe-left:   env(safe-area-inset-left,   0px);
-            --safe-right:  env(safe-area-inset-right,  0px);
-          }
-
-          /*
-            ── Hanya aktif di PWA (mode standalone) ──
-            Di browser biasa blok ini tidak jalan sama sekali,
-            jadi landing page tidak terpengaruh.
-          */
-          @media (display-mode: standalone) {
-
-            /*
-              Dorong seluruh konten body ke bawah sebesar tinggi
-              status bar supaya tidak ketutup.
-              Di Android biasanya 0px. Di iPhone notch/Dynamic Island ~44-59px.
-            */
-            body {
-              padding-top: env(safe-area-inset-top, 0px);
-            }
-
-            /*
-              bot-nav = bottom navigation bar Journalyze
-              (Home / Risiko / Plan / Jurnal / Filter / Lainnya)
-              Tambah padding bawah supaya tombol tidak ketutup
-              home indicator iPhone.
-            */
-            .bot-nav {
-              padding-bottom: env(safe-area-inset-bottom, 0px);
-            }
-
-            /*
-              bn-more-drawer = drawer "Menu Lainnya" yang slide dari bawah.
-              Samakan padding bawahnya supaya konten drawer tidak
-              ketutup home indicator juga.
-            */
-            .bn-more-drawer {
-              padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
-            }
-          }
-        `}</style>
       </head>
 
       <body suppressHydrationWarning>
         {children}
+        <PixelTracker />
 
         {/* Service Worker Registration */}
         <Script

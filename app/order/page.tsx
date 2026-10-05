@@ -2,6 +2,7 @@
 
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useState, useEffect, Suspense } from 'react';
+import { usePixel, setPixelContext } from '@/hooks/usePixel';
 import './order.css';
 
 /* ── PAKET DATA ── */
@@ -86,6 +87,7 @@ declare global {
 function OrderForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { fireTrigger } = usePixel();
 
   const rawPaket = searchParams.get('paket') ?? 'pro';
   const initPaket: PaketKey = rawPaket in PAKET_DATA ? (rawPaket as PaketKey) : 'pro';
@@ -103,6 +105,11 @@ function OrderForm() {
   const [errorMsg, setErrorMsg] = useState('');
 
   const paket = PAKET_DATA[selectedPaket];
+
+  // Meta Pixel: konteks harga paket untuk aturan event (nilai otomatis)
+  useEffect(() => {
+    setPixelContext({ value: PAKET_DATA[selectedPaket].nominal, content_name: 'Journalyze Premium' });
+  }, [selectedPaket]);
 
   // Sync paket ke URL
   useEffect(() => {
@@ -148,6 +155,9 @@ function OrderForm() {
     setErrorMsg('');
 
     try {
+      // Meta Pixel: InitiateCheckout (form valid, sebelum fetch create-transaction)
+      fireTrigger('pay_click', { value: paket.nominal, content_name: paket.label });
+
       const waFormatted = waNum.replace(/^0/, '62').replace(/\D/g, '');
 
       const res = await fetch('/api/midtrans/create-transaction', {
@@ -175,7 +185,11 @@ function OrderForm() {
 
       setSubmitting(false);
       window.snap.pay(data.token, {
-        onSuccess: () => router.push('/journal?payment=success'),
+        onSuccess: async () => {
+          // Meta Pixel: Purchase — fire SEBELUM router.push
+          await fireTrigger('payment_success', { value: Number(data.final_amount) || paket.nominal, content_name: paket.label, eventId: data.order_id });
+          router.push('/journal?payment=success');
+        },
         onPending: () => router.push('/journal?payment=pending'),
         onError: () => setErrorMsg('Pembayaran gagal. Silakan coba lagi.'),
         onClose: () => {},

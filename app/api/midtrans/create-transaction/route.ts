@@ -8,6 +8,33 @@ const VALID_PAKETS: Record<string, { label: string; nominal: number }> = {
   elite: { label: 'Journalyze Elite - Lifetime + Review', nominal: 249000 },
 }
 
+// Cari user berdasarkan email TANPA batas 50 user (listUsers default hanya halaman pertama)
+async function findUserByEmail(email: string): Promise<{ id: string; email: string } | null> {
+  const target = email.trim().toLowerCase()
+  if (!target) return null
+
+  // 1) Cari lewat tabel profiles (cepat). Karakter wildcard ilike (\\, %, _) di-escape.
+  const escaped = target.replace(/[\\%_]/g, '\\$&')
+  const { data: prof } = await _sbAdmin
+    .from('profiles')
+    .select('id, email')
+    .ilike('email', escaped)
+    .limit(1)
+    .maybeSingle()
+  if (prof?.id) return { id: prof.id as string, email: (prof.email as string) || target }
+
+  // 2) Fallback: pindai Auth Admin API per halaman (maks 20.000 user)
+  for (let page = 1; page <= 20; page++) {
+    const { data, error } = await _sbAdmin.auth.admin.listUsers({ page, perPage: 1000 })
+    if (error) break
+    const users = data?.users ?? []
+    const hit = users.find((u) => (u.email || '').toLowerCase() === target)
+    if (hit) return { id: hit.id, email: hit.email || target }
+    if (users.length < 1000) break
+  }
+  return null
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
@@ -23,12 +50,7 @@ export async function POST(req: NextRequest) {
     let userPhone: string = ''
 
     // ── Mode A: User sudah login (dari /checkout) ──
-    const sessionUser = user_email
-      ? await (async () => {
-          const { data } = await _sbAdmin.auth.admin.listUsers()
-          return (data?.users ?? []).find((u: { email?: string; id: string }) => u.email === user_email) ?? null
-        })()
-      : null
+    const sessionUser = user_email ? await findUserByEmail(String(user_email)) : null
 
     if (sessionUser) {
       userId = sessionUser.id
@@ -73,8 +95,7 @@ export async function POST(req: NextRequest) {
       })
 
       // Cek email sudah terdaftar
-      const { data: existingUsers } = await _sbAdmin.auth.admin.listUsers()
-      const existingUser = existingUsers?.users?.find(u => u.email === userEmail)
+      const existingUser = await findUserByEmail(userEmail)
 
       if (existingUser) {
         userId = existingUser.id
@@ -194,6 +215,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Gagal membuat transaksi pembayaran.' }, { status: 500 })
     }
 
+    // Meta CAPI: simpan konteks browser (user agent, IP, cookie _fbp/_fbc) untuk Purchase dari webhook
+    try {
+      const forwarded = req.headers.get('x-forwarded-for') || ''
+      await _sbAdmin.from('pixel_order_context').insert({
+        order_id: orderId,
+        user_agent: req.headers.get('user-agent') || null,
+        client_ip: forwarded.split(',')[0].trim() || null,
+        fbp: req.cookies.get('_fbp')?.value || null,
+        fbc: req.cookies.get('_fbc')?.value || null,
+        source_url: req.headers.get('referer') || null,
+      })
+    } catch (ctxError) {
+      console.warn('pixel_order_context insert skipped:', ctxError)
+    }
+
     // Update lead & profile dengan order ID
     await _sbAdmin.from('leads').update({ midtrans_order_id: orderId }).eq('email', userEmail)
     await _sbAdmin.from('profiles').update({ midtrans_order_id: orderId }).eq('id', userId)
@@ -202,6 +238,7 @@ export async function POST(req: NextRequest) {
       token: txData.token,
       redirect_url: txData.redirect_url,
       order_id: orderId,
+      final_amount: finalAmount,
     })
 
   } catch (error) {

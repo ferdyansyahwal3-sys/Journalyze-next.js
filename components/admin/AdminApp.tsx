@@ -23,11 +23,11 @@ export default function AdminApp() {
   return (
     <>
       <Topbar />
-      <KeysPanel active={activeTab === 'keys'} />
-      <AnalyticsPanel active={activeTab === 'analytics'} />
-      <PixelPanel active={activeTab === 'pixel'} />
-      <UsersPanel active={activeTab === 'users'} />
-      <PromoPanel active={activeTab === 'promos'} />
+      <div style={{ display: activeTab === 'keys'      ? 'block' : 'none' }}><KeysPanel      active={activeTab === 'keys'}      /></div>
+      <div style={{ display: activeTab === 'analytics' ? 'block' : 'none' }}><AnalyticsPanel active={activeTab === 'analytics'} /></div>
+      <div style={{ display: activeTab === 'pixel'     ? 'block' : 'none' }}><PixelPanel     active={activeTab === 'pixel'}     /></div>
+      <div style={{ display: activeTab === 'users'     ? 'block' : 'none' }}><UsersPanel     active={activeTab === 'users'}     /></div>
+      <div style={{ display: activeTab === 'promos'    ? 'block' : 'none' }}><PromoPanel     active={activeTab === 'promos'}    /></div>
       <ConfirmModal />
       <Toast />
     </>

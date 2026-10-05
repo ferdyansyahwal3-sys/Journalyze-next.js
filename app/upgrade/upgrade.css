@@ -70,7 +70,7 @@
   font-family: 'Cormorant Garamond', serif;
   font-size: 22px;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text);
   text-decoration: none;
   letter-spacing: 0;
   display: flex;
@@ -78,7 +78,7 @@
   gap: 0;
 }
 .up-nav-logo-text {
-  color: #ffffff;
+  color: var(--text);
 }
 .up-nav-logo-em {
   color: var(--gold2);

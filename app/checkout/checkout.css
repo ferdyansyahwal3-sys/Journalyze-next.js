@@ -68,13 +68,13 @@
   font-family: 'Cormorant Garamond', serif;
   font-size: 22px;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text);
   text-decoration: none;
   letter-spacing: 0;
   display: flex;
   align-items: center;
 }
-.co-nav-logo-text { color: #ffffff; }
+.co-nav-logo-text { color: var(--text); }
 .co-nav-logo-em   { color: var(--gold2); font-style: italic; }
 .co-nav-badge {
   font-family: 'JetBrains Mono', monospace;

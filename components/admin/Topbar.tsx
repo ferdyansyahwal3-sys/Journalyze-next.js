@@ -6,22 +6,27 @@ import { useAdminAuth } from '@/hooks/useAdminAuth';
 
 export default function Topbar() {
   const adminLabel = useAdminStore((s) => s.adminLabel);
-  const activeTab = useAdminStore((s) => s.activeTab);
+  const activeTab  = useAdminStore((s) => s.activeTab);
   const setActiveTab = useAdminStore((s) => s.setActiveTab);
   const { doLogout } = useAdminAuth();
 
   return (
     <>
+      {/* ── Topbar ── */}
       <div className="topbar">
-        <div>
+        <div className="topbar-left">
           <span className="brand">
-            Journal<em>yze</em>
+            <span style={{ color: 'var(--text)' }}>Journal</span>
+            <em style={{ color: 'var(--gold2)' }}>yze</em>
           </span>
+          <span className="brand-separator" />
           <span className="brand-tag">Admin Panel</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 11, color: 'var(--text3)', fontFamily: "'JetBrains Mono',monospace" }}>
-            ⚡ <span>{adminLabel}</span>
+
+        <div className="topbar-right">
+          <span className="admin-label">
+            <span className="admin-label-dot" />
+            {adminLabel}
           </span>
           <button className="logout-btn" onClick={doLogout}>
             Keluar
@@ -29,37 +34,23 @@ export default function Topbar() {
         </div>
       </div>
 
+      {/* ── Tab Nav ── */}
       <div className="tab-nav">
-        <button
-          className={`tab-btn ${activeTab === 'keys' ? 'active' : ''}`}
-          onClick={() => setActiveTab('keys')}
-        >
-          🔑 License Keys
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}
-          onClick={() => setActiveTab('analytics')}
-        >
-          📊 Usage Analytics
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'pixel' ? 'active' : ''}`}
-          onClick={() => setActiveTab('pixel')}
-        >
-          📡 Pixel Tracking
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
-          onClick={() => setActiveTab('users')}
-        >
-          👥 User Management
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'promos' ? 'active' : ''}`}
-          onClick={() => setActiveTab('promos')}
-        >
-          🎟️ Promo Codes
-        </button>
+        {[
+          { id: 'keys',      icon: '🔑', label: 'License Keys'     },
+          { id: 'analytics', icon: '📊', label: 'Usage Analytics'  },
+          { id: 'pixel',     icon: '📡', label: 'Pixel Tracking'   },
+          { id: 'users',     icon: '👥', label: 'User Management'  },
+          { id: 'promos',    icon: '🎟️', label: 'Promo Codes'     },
+        ].map((t) => (
+          <button
+            key={t.id}
+            className={`tab-btn ${activeTab === t.id ? 'active' : ''}`}
+            onClick={() => setActiveTab(t.id as typeof activeTab)}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
       </div>
     </>
   );

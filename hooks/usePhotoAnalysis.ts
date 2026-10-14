@@ -1,14 +1,7 @@
 // hooks/usePhotoAnalysis.ts
-// 1:1 port dari fungsi analyzePhoto, handlePhotos, compressImage,
-// readFileAsBase64, handleFotoAnalisa, renderFotoAnalisaGrid,
-// rmFotoAnalisa, openFotoFull di index.html
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-
-// ─────────────────────────────────────────────
-// HELPERS (1:1 index.html)
-// ─────────────────────────────────────────────
 
 export function compressImage(base64: string, maxPx = 1024, quality = 0.80): Promise<string> {
   return new Promise(resolve => {
@@ -24,7 +17,7 @@ export function compressImage(base64: string, maxPx = 1024, quality = 0.80): Pro
       c.getContext('2d')!.drawImage(img, 0, 0, w, h);
       resolve(c.toDataURL('image/jpeg', quality));
     };
-    img.onerror = () => resolve(base64); // fallback tanpa compress
+    img.onerror = () => resolve(base64);
     img.src = base64;
   });
 }
@@ -37,7 +30,6 @@ export function readFileAsBase64(file: File): Promise<string> {
     r.readAsDataURL(file);
   });
 }
-
 
 export function detectSesiFromBrokerTime(
   brokerTime: string | null | undefined,
@@ -53,46 +45,48 @@ export function detectSesiFromBrokerTime(
   return 'US';
 }
 
-// ─────────────────────────────────────────────
-// OCR PROMPT (1:1 index.html line ~5293)
-// Diperjelas: close = angka KEDUA di baris "entry → close", jangan tertukar dengan T/P.
-// ─────────────────────────────────────────────
-
 const OCR_PROMPT = `Kamu adalah sistem OCR untuk jurnal trading. Analisis screenshot MT4/MT5 ini.
 
-PRIORITAS: Jika ada multiple trade, ambil yang paling depan/highlighted/expanded.
+PRIORITAS: Jika ada multiple trade, ambil yang paling depan/highlighted/expanded (yang sudah di-tap dan menampilkan detail lengkap).
 
 Ekstrak data berikut:
-- pair: nama pair (XAUUSDm → hapus 'm' → XAUUSD, NAS100→NASDAQ)
+- pair: nama pair (XAUUSDm hapus m jadi XAUUSD, NAS100 jadi NASDAQ, #BTCUSD hapus # jadi BTCUSD)
 - posisi: Buy atau Sell
 - lot: angka lot (contoh: 0.01, 0.1)
-- entry: open price
-- close: close price (harga saat posisi ditutup)
-- sl: nilai S/L jika ada, null jika tidak ada
-- tp: nilai T/P jika ada, null jika tidak ada
-- result: Profit (warna biru/positif) atau Lose (warna merah/negatif)
-- tanggal: format YYYY-MM-DD dari open time (bukan close time). Contoh: 2026.01.13 → 2026-01-13
+- entry: open price (angka PERTAMA sebelum panah)
+- close: close price (angka KEDUA setelah panah)
+- sl: nilai Stop Loss jika ada, null jika tidak ada
+- tp: nilai Take Profit jika ada, null jika tidak ada
+- result: Profit (angka biru/positif) atau Lose (angka merah/negatif)
+- tanggal: format YYYY-MM-DD dari open time. Contoh: 2026.10.09 menjadi 2026-10-09
+- open_time: jam open time format HH:MM 24 jam. Null jika tidak ada.
 
-CARA MEMBACA entry DAN close (PENTING):
-- Di MT5 mobile, harga tampil dalam satu baris dengan panah: "4137.93 → 4131.77".
-  Angka PERTAMA (sebelum panah) = entry. Angka KEDUA (setelah panah) = close.
-  Contoh itu berarti entry=4137.93 dan close=4131.77.
-- close BUKAN nilai T/P dan BUKAN nilai S/L. T/P dan S/L dibaca dari baris "S/L:" dan "T/P:" saja.
-- Untuk trade yang sudah ditutup, close WAJIB diisi. Isi null hanya jika benar-benar tidak ada angka setelah panah.
+CARA MEMBACA entry DAN close:
+- Harga selalu tampil dalam satu baris dengan panah: 4137.93 kemudian 4131.77
+- Angka PERTAMA sebelum panah adalah entry. Angka KEDUA setelah panah adalah close.
+- Angka dengan spasi ribuan: 4 197.00 sama dengan 4197.00
+- close BUKAN nilai TP dan BUKAN nilai SL.
+
+CARA MEMBACA SL DAN TP:
+- Format Android: label S / L dan T / P dengan spasi di sekitar garis miring
+- Format iOS: label S/L dan T/P tanpa spasi
+- Kedua format dibaca sebagai sl dan tp.
+
+CARA MEMBACA OPEN TIME DAN TANGGAL:
+- Format Android: ada field berlabel Open diikuti datetime. Contoh Open 2026.10.09 20:52:13 maka tanggal 2026-10-09 dan open_time 20:52
+- Format iOS: datetime tampil inline berpasangan. Contoh 2026.09.29 06:02:05 kemudian 2026.09.29 06:56:25 maka ambil yang PERTAMA, tanggal 2026-09-29 dan open_time 06:02
+- Selalu ambil open time bukan close time.
 
 ATURAN KHUSUS:
-- Angka P/L dengan spasi: -51 369.69 = -51369.69
-- Warna biru = Profit, merah = Lose
-- Hapus suffix 'm' dari pair
-- Ambil tanggal dari open time, bukan close time
-- open_time: jam open time format "HH:MM" 24 jam. Contoh: 2026.05.28 01:02:01 → "01:02". Jika tidak ada tulis null.
-- Jawab HANYA JSON, tanpa markdown, tanpa penjelasan:
+- Hapus suffix m dari pair
+- Hapus prefix # dari pair
+- Warna biru atau angka positif adalah Profit, warna merah atau angka negatif adalah Lose
+- Field delta di iOS diabaikan
+- Field Biaya di iOS sama dengan Commission di Android, diabaikan
+- close WAJIB diisi untuk trade yang sudah ditutup
 
-{"pair":"XAUUSD","posisi":"Sell","lot":0.01,"entry":4586.382,"close":4580.100,"sl":4590.250,"tp":4575.000,"result":"Profit","tanggal":"2026-01-13","open_time":"01:02"}`;
-
-// ─────────────────────────────────────────────
-// TYPES
-// ─────────────────────────────────────────────
+OUTPUT WAJIB JSON MURNI tanpa markdown tanpa backtick tanpa komentar:
+{"pair":"XAUUSD","posisi":"Sell","lot":0.01,"entry":4137.93,"close":4131.77,"sl":4141.33,"tp":4131.72,"result":"Profit","tanggal":"2026-09-29","open_time":"06:02"}`;
 
 export interface OcrResult {
   pair?: string;
@@ -109,10 +103,57 @@ export interface OcrResult {
 
 type AiDotState = 'idle' | 'loading' | 'success' | 'error';
 
-// ─────────────────────────────────────────────
-// usePhotoAnalysis — OCR upload zone (top modal)
-// 1:1 handlePhotos + analyzePhoto (index.html)
-// ─────────────────────────────────────────────
+function robustParseOcr(raw: string): OcrResult {
+  let txt = raw
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/g, '')
+    .replace(/\/\/.*$/gm, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .trim();
+
+  const jsonMatch = txt.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('Format respons tidak valid — isi manual');
+
+  let parsed: OcrResult;
+  try {
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch {
+    const fixed = jsonMatch[0]
+      .replace(/,\s*([}\]])/g, '$1')
+      .replace(/'/g, '"')
+      .replace(/"null"/g, 'null')
+      .replace(/"true"/g, 'true')
+      .replace(/"false"/g, 'false');
+    parsed = JSON.parse(fixed);
+  }
+
+  const toNum = (v: unknown) => {
+    if (v == null) return null;
+    if (typeof v === 'number') return isNaN(v) ? null : v;
+    const n = parseFloat(String(v).replace(/\s/g, ''));
+    return isNaN(n) ? null : n;
+  };
+
+  parsed.entry = toNum(parsed.entry);
+  parsed.close = toNum(parsed.close);
+  parsed.sl    = toNum(parsed.sl);
+  parsed.tp    = toNum(parsed.tp);
+  parsed.lot   = toNum(parsed.lot);
+
+  if (parsed.pair) {
+    parsed.pair = parsed.pair.replace(/^#/, '').replace(/m$/, '').toUpperCase();
+  }
+  if (parsed.posisi) {
+    const p = parsed.posisi.toLowerCase();
+    parsed.posisi = p === 'buy' ? 'Buy' : p === 'sell' ? 'Sell' : parsed.posisi;
+  }
+  if (parsed.result) {
+    const r = parsed.result.toLowerCase();
+    parsed.result = r === 'profit' ? 'Profit' : (r === 'lose' || r === 'loss') ? 'Lose' : parsed.result;
+  }
+
+  return parsed;
+}
 
 export function usePhotoAnalysis() {
   const [uploadPreviews, setUploadPreviews] = useState<string[]>([]);
@@ -120,7 +161,6 @@ export function usePhotoAnalysis() {
   const [aiDotState,     setAiDotState]     = useState<AiDotState>('idle');
   const analyzing = useRef(false);
 
-  // ── analyzePhoto — 1:1 index.html line 5276 ──────────────────────────────
   const analyzePhoto = useCallback(async (
     base64img: string,
     onResult: (r: OcrResult) => void,
@@ -132,14 +172,12 @@ export function usePhotoAnalysis() {
     setAiDotState('loading');
     setAiStatus('🗜️ Kompres gambar...');
 
-    // Kompres dulu sebelum kirim → hemat 50-70% bandwidth & waktu
     const compressed = await compressImage(base64img, 1024, 0.80);
     const mediaType  = 'image/jpeg';
     const imgData    = compressed.split(',')[1];
 
     setAiStatus('🔍 Menganalisis foto trade...');
 
-    // ── Cek provider & API key (1:1 index.html) ──
     const provider  = localStorage.getItem('jz_ai_provider') || 'gemini';
     const geminiKey = localStorage.getItem('jz_gemini_key')  || '';
     const claudeKey = localStorage.getItem('jz_anthropic_key') || '';
@@ -162,11 +200,10 @@ export function usePhotoAnalysis() {
     try {
       let txt = '';
 
-      // ── GEMINI VISION (1:1 index.html line ~5351) ──
       if (provider === 'gemini') {
-        const model       = 'gemini-2.5-flash';
+        const model       = 'gemini-2.0-flash';
         const maxRetry    = 3;
-        const retryDelays = [1500, 3000, 6000]; // exponential backoff
+        const retryDelays = [1500, 3000, 6000];
         let   lastErr     = '';
 
         const reqBody = JSON.stringify({
@@ -182,7 +219,7 @@ export function usePhotoAnalysis() {
           try {
             const resp = await fetch(
               `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
-              { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: reqBody},
+              { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: reqBody },
             );
             if (!resp.ok) {
               const errData = await resp.json().catch(() => ({})) as { error?: { message?: string } };
@@ -209,7 +246,6 @@ export function usePhotoAnalysis() {
 
         if (!txt) throw new Error(lastErr || 'Analisa gagal');
 
-      // ── CLAUDE VISION (1:1 index.html line ~5394) ──
       } else {
         const resp = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
@@ -240,23 +276,8 @@ export function usePhotoAnalysis() {
         if (!txt) throw new Error('Respons kosong dari API');
       }
 
-      // ── Parse JSON — robust (1:1 index.html line ~5420) ──
-      let cleanTxt = txt
-        .replace(/```json\s*/gi, '')
-        .replace(/```\s*/g, '')
-        .trim();
+      const parsed = robustParseOcr(txt);
 
-      const jsonMatch = cleanTxt.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('Format respons tidak valid — isi manual');
-
-      let parsed: OcrResult;
-      try {
-        parsed = JSON.parse(jsonMatch[0]);
-      } catch {
-        parsed = JSON.parse(jsonMatch[0].trim());
-      }
-
-      // Close Price wajib ada supaya pips & P/L bisa dihitung otomatis.
       if (parsed.close == null) {
         setAiStatus('⚠️ Data terbaca, tapi Close Price tidak ketemu — isi manual supaya P/L terhitung.');
         setAiDotState('error');
@@ -278,28 +299,17 @@ export function usePhotoAnalysis() {
     }
   }, []);
 
-  // ── handlePhotos — 1:1 index.html line 5259 ──────────────────────────────
-  // Baca semua file paralel, push ke preview, analisa foto pertama saja
   const handleOcrFiles = useCallback(async (
     files: FileList | null,
     onResult: (r: OcrResult) => void,
     onApiKeyNeeded: () => void,
   ) => {
     if (!files || !files.length) return;
-
-    const arr = Array.from(files).filter(f => {
-      if (f.size > 10 * 1024 * 1024) return false; // maks 10MB (1:1)
-      return true;
-    });
+    const arr = Array.from(files).filter(f => f.size <= 10 * 1024 * 1024);
     if (!arr.length) return;
-
-    // Baca SEMUA file secara paralel (1:1 index.html)
-    const results  = await Promise.all(arr.map(readFileAsBase64));
-    const isFirst  = uploadPreviews.length === 0; // apakah ini batch pertama
-
+    const results = await Promise.all(arr.map(readFileAsBase64));
+    const isFirst = uploadPreviews.length === 0;
     setUploadPreviews(prev => [...prev, ...results]);
-
-    // Analisa otomatis hanya foto pertama yang di-upload (1:1 index.html)
     if (isFirst && results.length > 0) {
       await analyzePhoto(results[0], onResult, onApiKeyNeeded);
     }
@@ -314,74 +324,47 @@ export function usePhotoAnalysis() {
     setAiDotState('idle');
   }, []);
 
-  return {
-    uploadPreviews,
-    aiStatus,
-    aiDotState,
-    handleOcrFiles,
-    removeOcrPreview,
-    resetOcrStatus,
-  };
+  return { uploadPreviews, aiStatus, aiDotState, handleOcrFiles, removeOcrPreview, resetOcrStatus };
 }
-
-// ─────────────────────────────────────────────
-// useFotoAnalisa — section "Foto Analisa" collapsible
-// 1:1 handleFotoAnalisa, renderFotoAnalisaGrid,
-//     rmFotoAnalisa, openFotoFull (index.html)
-// ─────────────────────────────────────────────
 
 export function useFotoAnalisa(initial: string[] = []) {
   const [fotoAnalisa, setFotoAnalisa] = useState<string[]>(initial);
   const [fotoOpen,    setFotoOpen]    = useState(false);
 
-  // toggleFotoAnalisa (1:1 index.html line 5489)
   const toggleFotoAnalisa = useCallback(() => setFotoOpen(p => !p), []);
 
-  // handleFotoAnalisa (1:1 index.html line 5497)
-  // Supabase Storage dulu, fallback base64
   const handleFotoAnalisaFiles = useCallback(async (
     files:  FileList | null,
     sb:     { storage: { from: (b: string) => { upload: (p: string, f: File, o: object) => Promise<{ data: { path: string } | null; error: Error | null }>; getPublicUrl: (p: string) => { data: { publicUrl: string } }; remove: (p: string[]) => Promise<unknown> } } } | null,
     userId: string | null,
   ) => {
     if (!files || !files.length) return;
-    const arr = Array.from(files);
-
-    // Proses semua file secara paralel (1:1 index.html)
-    await Promise.all(arr.map(async file => {
-      // Coba Supabase Storage dulu
+    await Promise.all(Array.from(files).map(async file => {
       if (sb && userId) {
         try {
           const ext  = file.name.split('.').pop() || 'jpg';
           const path = `${userId}/analisa_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-          const { data, error } = await sb.storage
-            .from('trade-photos')
-            .upload(path, file, { upsert: false, contentType: file.type });
+          const { data, error } = await sb.storage.from('trade-photos').upload(path, file, { upsert: false, contentType: file.type });
           if (!error && data) {
             const { data: urlData } = sb.storage.from('trade-photos').getPublicUrl(data.path);
             setFotoAnalisa(prev => [...prev, urlData.publicUrl]);
             return;
           }
           console.warn('Storage upload gagal, fallback base64:', error?.message);
-        } catch (e) {
-          console.warn('Storage error, fallback base64:', (e as Error).message);
-        }
+        } catch (e) { console.warn('Storage error, fallback base64:', (e as Error).message); }
       }
-      // Fallback: base64 + kompres (1:1 index.html)
       const raw        = await readFileAsBase64(file);
       const compressed = await compressImage(raw, 1024, 0.80);
       setFotoAnalisa(prev => [...prev, compressed]);
     }));
   }, []);
 
-  // rmFotoAnalisa (1:1 index.html line 5550)
   const rmFotoAnalisa = useCallback((
     i:  number,
     sb: { storage: { from: (b: string) => { remove: (p: string[]) => Promise<unknown> } } } | null,
   ) => {
     setFotoAnalisa(prev => {
       const src = prev[i];
-      // Kalau URL Supabase Storage, hapus dari storage juga (1:1)
       if (src && src.startsWith('http') && sb) {
         try {
           const match = src.match(/trade-photos\/(.+)$/);
@@ -392,41 +375,21 @@ export function useFotoAnalisa(initial: string[] = []) {
     });
   }, []);
 
-  // openFotoFull (1:1 index.html line 5560)
   const openFotoFull = useCallback((src: string) => {
-    const ov    = document.createElement('div');
-    ov.style.cssText =
-      'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;display:flex;' +
-      'align-items:center;justify-content:center;cursor:zoom-out;backdrop-filter:blur(6px);';
-
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;backdrop-filter:blur(6px);';
     const img = document.createElement('img');
-    img.src   = src;
-    img.style.cssText =
-      'max-width:92vw;max-height:88vh;border-radius:10px;' +
-      'border:1px solid rgba(212,175,55,0.3);box-shadow:0 20px 60px rgba(0,0,0,0.8);';
-
+    img.src = src;
+    img.style.cssText = 'max-width:92vw;max-height:88vh;border-radius:10px;border:1px solid rgba(212,175,55,0.3);box-shadow:0 20px 60px rgba(0,0,0,0.8);';
     const close = document.createElement('button');
     close.textContent = '✕';
-    close.style.cssText =
-      'position:absolute;top:18px;right:22px;background:rgba(255,255,255,0.1);' +
-      'border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:7px;' +
-      'width:32px;height:32px;font-size:14px;cursor:pointer;backdrop-filter:blur(4px);' +
-      'display:flex;align-items:center;justify-content:center;';
-
+    close.style.cssText = 'position:absolute;top:18px;right:22px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:7px;width:32px;height:32px;font-size:14px;cursor:pointer;backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;';
     ov.appendChild(img);
     ov.appendChild(close);
-    ov.addEventListener('click',    () => ov.remove());
+    ov.addEventListener('click', () => ov.remove());
     close.addEventListener('click', (e) => { e.stopPropagation(); ov.remove(); });
     document.body.appendChild(ov);
   }, []);
 
-  return {
-    fotoAnalisa,
-    setFotoAnalisa,
-    fotoOpen,
-    toggleFotoAnalisa,
-    handleFotoAnalisaFiles,
-    rmFotoAnalisa,
-    openFotoFull,
-  };
+  return { fotoAnalisa, setFotoAnalisa, fotoOpen, toggleFotoAnalisa, handleFotoAnalisaFiles, rmFotoAnalisa, openFotoFull };
 }

@@ -201,7 +201,7 @@ export function usePhotoAnalysis() {
       let txt = '';
 
       if (provider === 'gemini') {
-        const model       = 'gemini-2.0-flash';
+        const model       = 'gemini-2.5-flash';
         const maxRetry    = 3;
         const retryDelays = [1500, 3000, 6000];
         let   lastErr     = '';

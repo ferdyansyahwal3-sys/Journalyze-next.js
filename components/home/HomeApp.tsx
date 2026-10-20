@@ -51,6 +51,7 @@ const TABS = [
   { id: 'data',    label: '📋 Data'    },
   { id: 'filter',  label: '🔍 Filter'  },
   { id: 'monthly', label: '📊 Bulanan' },
+  { id: 'news',    label: '📰 News'    },
 ];
 
 const TESTIMONIALS = [
@@ -310,9 +311,8 @@ function HomeAppInner() {
           </p>
 
           <div className="hero-cta-wrap reveal delay-2">
-            {/* [REVISI #2] Tombol hero → scroll ke pricing */}
-            <a href="#pricing" onClick={scrollToPricing} className="btn-primary-gold">
-              <Lightning size={16} weight="fill" /><span>Dapatkan Akses Sekarang</span>
+            <a href="#preview-fitur" onClick={(e)=>{e.preventDefault();document.getElementById('preview-fitur')?.scrollIntoView({behavior:'smooth'})}} className="btn-primary-gold">
+              <Eye size={16} weight="fill" /><span>Lihat Fitur Lengkapnya ↓</span>
             </a>
             <a href="/uji-coba" className="btn-secondary-outline">
               <span>Coba Gratis Sekarang</span><ArrowRight size={14} />
@@ -467,7 +467,7 @@ function HomeAppInner() {
       <div className="section-divider"/>
 
       {/* ── PREVIEW FITUR ── */}
-      <section className="mockup-section">
+      <section id="preview-fitur" className="mockup-section">
         <div className="section-header">
           <div className="section-badge reveal"><span className="dot"/><span>Preview Fitur</span></div>
           <h2 className="section-title reveal">Lihat Sendiri<br/><span className="gold-text">Tampilan Journalyze</span></h2>

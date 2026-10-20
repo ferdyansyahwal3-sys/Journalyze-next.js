@@ -679,3 +679,23 @@
   .bd-cover { min-height: 38vh; max-height: 52vh; border-radius: 14px; }
   .bd-cover-content { padding: 12px 14px 14px; }
 }
+
+/* ══ EDIT TRADE BTN ══ */
+.bd-edit-btn {
+  background: var(--gold-bg);
+  border: 1px solid var(--gold-bd);
+  color: var(--gold2);
+  border-radius: 8px;
+  height: 32px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  transition: all .15s;
+}
+.bd-edit-btn:hover { background: var(--gold-bd); color: var(--bg); }

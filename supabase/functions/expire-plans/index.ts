@@ -18,7 +18,7 @@ Deno.serve(async (req: Request) => {
   const { data: expired, error } = await supabase
     .from('profiles')
     .select('id, email, display_name')
-    .eq('plan', 'basic')
+    .in('plan', ['basic', 'trial'])
     .not('plan_expires_at', 'is', null)
     .lt('plan_expires_at', new Date().toISOString())
 
@@ -40,7 +40,7 @@ Deno.serve(async (req: Request) => {
       plan_expires_at: null,
     })
     .in('id', ids)
-    .eq('plan', 'basic') // guard: jangan timpa user yang baru saja upgrade
+    .in('plan', ['basic', 'trial']) // guard: jangan timpa user yang baru saja upgrade
 
   if (updateError) {
     return new Response(JSON.stringify({ error: updateError.message }), { status: 500 })

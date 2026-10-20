@@ -1,7 +1,8 @@
 // app/layout.tsx — root layout (WAJIB ada, satu-satunya tempat <html>/<body suppressHydrationWarning>)
 import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
-import PixelTracker from '@/components/PixelTracker';
+import PixelTracker from '@/components/PixelTracker'
+import AffiliateTracker from '@/components/AffiliateTracker';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -45,6 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body suppressHydrationWarning>
         {children}
         <PixelTracker />
+        <AffiliateTracker />
 
         {/* Service Worker Registration */}
         <Script

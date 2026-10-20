@@ -4,6 +4,7 @@
 import ShareLiveButton from '@/components/journal/ShareLiveButton';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useJournalStore } from '@/store/useJournalStore';
+import { usePlan } from '@/hooks/usePlan';
 import { useTradeStore, recalcAll } from '@/store/useTradeStore';
 import {
   liveRates, calcPips, calcPL, idrToDisp, fmtDispCur, fmtMoney, inputToIDR,
@@ -47,6 +48,10 @@ function calcStreak(trades: Trade[]) {
   });
   return { win: maxW, loss: maxL };
 }
+
+// Batas jumlah trade untuk user free yang jatah trial/paketnya sudah terpakai
+const FREE_TRADE_LIMIT = 50;
+const FREE_LIMIT_MSG = `Batas ${FREE_TRADE_LIMIT} trade untuk paket Free sudah tercapai. Upgrade untuk lanjut mencatat.`;
 
 const PAIRS = ['XAUUSD', 'USDJPY', 'BTCUSD', 'GBPUSD', 'NASDAQ'];
 const METODE_LIST = [
@@ -604,8 +609,12 @@ function DWModal({ currency, onSave, onClose }: {
 
 export default function PageData({ active }: { active: boolean }) {
   const currentUser      = useJournalStore(s => s.currentUser);
-  const showToast        = useJournalStore(s => s.showToast);
-  const showConfirmModal = useJournalStore(s => s.showConfirmModal);
+  const showToast              = useJournalStore(s => s.showToast);
+  const showConfirmModal       = useJournalStore(s => s.showConfirmModal);
+  const editTradeTrigger       = useJournalStore(s => s.editTradeTrigger);
+  const clearEditTradeTrigger  = useJournalStore(s => s.clearEditTradeTrigger);
+  const trialAvailable   = useJournalStore(s => s.trialAvailable);
+  const { isFree }       = usePlan();
   
   const { trades, dwList, loadLocal, loadCloud, addTrade, updateTrade, deleteTrade, resetTrades, addDW, deleteDW } = useTradeStore();
 
@@ -719,8 +728,22 @@ export default function PageData({ active }: { active: boolean }) {
   const fmt   = (v: number) => fmtDispCur(v, currency);
   const fmtPL = (v: number | null | undefined) => v != null ? fmtMoney(v, currency) : '—';
 
-  const openAddModal  = () => { setForm(emptyForm());      setTradeModal(true); };
+  // Free yang bukan mode demo (trial/paket sudah terpakai) dibatasi FREE_TRADE_LIMIT trade
+  const atFreeLimit = isFree && !trialAvailable && trades.length >= FREE_TRADE_LIMIT;
+  const openAddModal  = () => {
+    if (atFreeLimit) { showToast(FREE_LIMIT_MSG, 'error'); return; }
+    setForm(emptyForm());
+    setTradeModal(true);
+  };
   const openEditModal = (t: Trade) => { setForm(tradeToForm(t)); setTradeModal(true); };
+
+  // ── Listen trigger edit dari halaman lain (misal Gallery) ──
+  useEffect(() => {
+    if (editTradeTrigger) {
+      openEditModal(editTradeTrigger);
+      clearEditTradeTrigger();
+    }
+  }, [editTradeTrigger]);
 
   const handleSaveTrade = useCallback(async () => {
     const { tanggal, lot, entry, close, pair, posisi, result } = form;
@@ -751,6 +774,7 @@ export default function PageData({ active }: { active: boolean }) {
 
     const isEdit   = !!form.id;
     const existing = isEdit ? trades.find(t => t.id === form.id) : null;
+    if (!isEdit && atFreeLimit) { showToast(FREE_LIMIT_MSG, 'error'); return; }
     const seqValue = existing ? (existing.seq ?? parseInt(existing.id) ?? Date.now()) : Date.now();
 
     const trade: Trade = {
@@ -767,7 +791,7 @@ export default function PageData({ active }: { active: boolean }) {
     if (isEdit) { await updateTrade(trade, userId); showToast('Trade diperbarui ✓', 'success'); }
     else        { await addTrade(trade, userId);    showToast('Trade ditambahkan ✓', 'success'); }
     setTradeModal(false);
-  }, [form, trades, userId, addTrade, updateTrade, showToast]);
+  }, [form, trades, userId, addTrade, updateTrade, showToast, atFreeLimit]);
 
   const handleDeleteTrade = (id: string) => {
     showConfirmModal('🗑️ Hapus Trade', 'Trade ini akan dihapus permanen.<br>Tindakan ini tidak bisa dibatalkan.', 'Hapus',

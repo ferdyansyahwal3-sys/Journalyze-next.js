@@ -12,6 +12,7 @@ export function usePlan() {
     isBasic:   userPlan === 'basic',
     isPro:     userPlan === 'pro' || userPlan === 'elite',
     isElite:   userPlan === 'elite',
+    isTrial:   userPlan === 'trial',
     isPremium: userPlan !== 'free',
 
     // Fitur yang dikunci untuk Free & Basic — tersedia mulai Pro/Elite

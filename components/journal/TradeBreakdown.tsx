@@ -164,7 +164,7 @@ function AiSection({ tradeId, onOpenApiKey }: { tradeId: string; onOpenApiKey: (
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function TradeBreakdown() {
-  const { breakdownTrade, breakdownList, breakdownIndex, closeBreakdown, setBreakdownIndex } = useJournalStore();
+  const { breakdownTrade, breakdownList, breakdownIndex, closeBreakdown, setBreakdownIndex, triggerEditTrade } = useJournalStore();
   const panelRef = useRef<HTMLDivElement>(null);
   const [currency, setCurrency] = useState('IDR');
   const [mistake, setMistake] = useState('');
@@ -286,6 +286,7 @@ export default function TradeBreakdown() {
             <button className="bd-nav-btn" disabled={!canNext} onClick={() => setBreakdownIndex(breakdownIndex + 1)}>→</button>
           </div>
           <div className="bd-header-title">Trade Breakdown</div>
+          <button className="bd-edit-btn" onClick={() => { triggerEditTrade(trade); handleClose(); }} title="Edit trade ini">EDIT</button>
           <button className="bd-close-btn" onClick={handleClose}>✕</button>
         </div>
 

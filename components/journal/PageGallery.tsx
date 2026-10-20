@@ -4,6 +4,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useTradeStore, recalcAll } from '@/store/useTradeStore';
 import { useFotoAnalisa } from '@/hooks/usePhotoAnalysis';
+import { PencilSimple } from '@phosphor-icons/react';
 import { useJournalStore } from '@/store/useJournalStore';
 import { liveRates } from '@/lib/riskCalc';
 
@@ -44,7 +45,7 @@ export default function PageGallery({ active }: { active: boolean }) {
 
   const { trades, dwList } = useTradeStore();
   const { openFotoFull } = useFotoAnalisa();
-  const { openBreakdown } = useJournalStore();
+  const { openBreakdown, triggerEditTrade, setActivePage } = useJournalStore();
   const kurs = liveRates.USD_IDR || 16462;
 
   useEffect(() => { setMounted(true); }, []);
@@ -193,7 +194,7 @@ export default function PageGallery({ active }: { active: boolean }) {
                 onClick={() => openBreakdown(trade, sorted)}
                 role="button"
                 tabIndex={0}
-              >
+                >
                 <div className="gallery-card-img-wrap">
                   {foto ? (
                     <>

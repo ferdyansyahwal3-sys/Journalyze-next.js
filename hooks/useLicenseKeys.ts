@@ -5,7 +5,7 @@
 'use client';
 
 import { useCallback, useMemo } from 'react';
-import { _sb, _sbAdmin, DELIVERY_BASE } from '@/lib/supabaseClient';
+import { _sbAdmin, DELIVERY_BASE } from '@/lib/supabaseClient';
 import { encodeDeliveryToken, genKeyString } from '@/lib/adminHelpers';
 import { useAdminStore, PAGE_SIZE } from '@/store/useAdminStore';
 import type { LicenseKey } from '@/lib/types';
@@ -24,7 +24,7 @@ export function useLicenseKeys() {
   const loadKeys = useCallback(async () => {
     // admin.html baris 468-499
     try {
-      const { data: keys, error } = await _sb
+      const { data: keys, error } = await _sbAdmin
         .from('license_keys')
         .select('*')
         .order('created_at', { ascending: false });
@@ -33,7 +33,7 @@ export function useLicenseKeys() {
       const usedByIds = (keys || []).filter((k) => k.used_by).map((k) => k.used_by);
       let emailMap: Record<string, { email: string; is_blocked: boolean }> = {};
       if (usedByIds.length) {
-        const { data: profs } = await _sb
+        const { data: profs } = await _sbAdmin
           .from('profiles')
           .select('id,email,is_blocked')
           .in('id', usedByIds);
@@ -109,7 +109,7 @@ export function useLicenseKeys() {
         const keys: string[] = [];
         for (let i = 0; i < qty; i++) {
           const key = genKeyString();
-          const { error } = await _sb.from('license_keys').insert({
+          const { error } = await _sbAdmin.from('license_keys').insert({
             key,
             is_used: false,
             is_revoked: false,
@@ -154,14 +154,15 @@ export function useLicenseKeys() {
 
       const userId = keyData?.used_by;
 
-      // 2. Hapus semua data terkait user (kalau key sudah dipakai)
+      // 2. Hapus akun login dulu (FK CASCADE otomatis menghapus profiles, trades, dll)
       if (userId) {
-        // Hapus semua trades
+        const { error: authErr } = await _sbAdmin.auth.admin.deleteUser(userId);
+        if (authErr && !/not.?found/i.test(authErr.message)) {
+          throw new Error('Gagal hapus akun login: ' + authErr.message);
+        }
+        // Jaga-jaga kalau masih ada sisa baris
         await _sbAdmin.from('trades').delete().eq('user_id', userId);
-        // Hapus profile
         await _sbAdmin.from('profiles').delete().eq('id', userId);
-        // Hapus auth user
-        await _sbAdmin.auth.admin.deleteUser(userId);
       }
 
       // 3. Hapus license key
@@ -180,7 +181,7 @@ export function useLicenseKeys() {
     }
   };
 
-  const confirmAction = useCallback(async () => {
+  const confirmAction = useCallback(async (reason?: string) => {
     // admin.html baris 644-664
     if (!pendingAction) return;
     const action = pendingAction;
@@ -188,8 +189,8 @@ export function useLicenseKeys() {
     try {
       if ('email' in action) {
         // block / unblock
-        const val = action.type === 'block' ? { is_blocked: true } : { is_blocked: false };
-        const { error } = await _sb.from('profiles').update(val).eq('email', action.email);
+        const val = action.type === 'block' ? { is_blocked: true, block_reason: reason?.trim() || 'Diblokir oleh admin' } : { is_blocked: false, block_reason: null };
+        const { error } = await _sbAdmin.from('profiles').update(val).eq('email', action.email);
         if (error) throw error;
         showToast(
           action.type === 'block'
@@ -202,8 +203,16 @@ export function useLicenseKeys() {
       }
       // revoke / restore
       const val = action.type === 'revoke' ? { is_revoked: true } : { is_revoked: false };
-      const { error } = await _sb.from('license_keys').update(val).eq('key', action.key);
+      const { error } = await _sbAdmin.from('license_keys').update(val).eq('key', action.key);
       if (error) throw error;
+      const { data: kd } = await _sbAdmin.from('license_keys').select('used_by').eq('key', action.key).maybeSingle();
+      if (kd?.used_by) {
+        await _sbAdmin.from('profiles').update(
+          action.type === 'revoke'
+            ? { is_blocked: true, block_reason: reason?.trim() || 'Lisensi dicabut oleh admin' }
+            : { is_blocked: false, block_reason: null }
+        ).eq('id', kd.used_by);
+      }
       showToast(
         action.type === 'revoke' ? '⛔ Akses key berhasil dicabut' : '♻️ Key berhasil di-restore',
         'success'

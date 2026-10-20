@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { _sb, _sbAdmin } from '@/lib/supabaseClient'
 import { getMidtransAuthHeader, MIDTRANS_CONFIG, generateOrderId } from '@/lib/midtrans'
+import { ensureAccountKey } from '@/lib/accountKey'
 
 const VALID_PAKETS: Record<string, { label: string; nominal: number }> = {
   basic: { label: 'Journalyze Basic - Akses 3 Bulan', nominal: 99000 },
@@ -38,7 +39,7 @@ async function findUserByEmail(email: string): Promise<{ id: string; email: stri
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { paket, promo_code, user_email } = body
+    const { paket, promo_code, user_email, affiliate_code: affiliateCode } = body
 
     // Validasi paket
     const paketKey = paket in VALID_PAKETS ? paket : 'pro'
@@ -132,6 +133,9 @@ export async function POST(req: NextRequest) {
           plan: 'free',
           is_activated: false,
         })
+
+        // Kode akun otomatis (non-fatal)
+        await ensureAccountKey(userId, userName)
       }
     }
 
@@ -196,7 +200,7 @@ export async function POST(req: NextRequest) {
       notification_url: 'https://journalyze.my.id/api/midtrans/webhook',
       custom_field1: userId,
       custom_field2: userEmail,
-      custom_field3: paketKey,
+      custom_field3: affiliateCode ? `${paketKey}|${affiliateCode}` : paketKey,
     }
 
     const response = await fetch(MIDTRANS_CONFIG.snapUrl, {

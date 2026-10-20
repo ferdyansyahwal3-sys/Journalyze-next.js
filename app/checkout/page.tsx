@@ -118,7 +118,7 @@ function CheckoutContent() {
         .single();
       setUserName(data?.display_name || u.email?.split('@')[0] || 'Trader');
       setUserEmail(data?.email || u.email || '');
-      const verified = data?.admin_verified === true && !!data?.plan_type;
+      const verified = data?.admin_verified === true && ['pro', 'elite'].includes(String(data?.plan_type ?? '').toLowerCase());
       setIsPremium(verified);
       setAuthChecked(true);
     };

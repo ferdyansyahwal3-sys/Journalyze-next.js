@@ -5,10 +5,11 @@ import { randomInt } from 'crypto'
 import { verifyMidtransSignature } from '@/lib/midtrans'
 import { Resend } from 'resend'
 import { sendPurchaseCapi } from '@/lib/metaCapi'
+import { ensureAccountKey } from '@/lib/accountKey'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ADMIN_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
 const resend = new Resend(process.env.RESEND_API_KEY!)
@@ -58,9 +59,12 @@ export async function POST(req: NextRequest) {
       custom_field1: userId,
       // FIX: paketKey ada di custom_field3, bukan custom_field2
       // create-transaction kirim: custom_field1=userId, custom_field2=userEmail, custom_field3=paketKey
-      custom_field3: planKeyFromOrder,
+      custom_field3: rawField3,
       customer_details,
     } = body
+
+    // rawField3 bisa "paketKey" atau "paketKey|affiliateCode"
+    const [planKeyFromOrder, affiliateCodeFromOrder] = (rawField3 ?? "").split("|")
 
     // ── Guard: userId wajib ada sebelum lanjut ──
     if (!userId) {
@@ -145,6 +149,7 @@ export async function POST(req: NextRequest) {
           plan_activated_at: new Date().toISOString(),
           plan_expires_at:   planExpiresAt,
           midtrans_order_id: order_id,
+          trial_used:        true,
         })
         .eq('id', userId)
         .select('email, display_name')
@@ -160,49 +165,103 @@ export async function POST(req: NextRequest) {
       const customerName  = customer_details?.first_name || profile?.display_name || 'Trader'
       const customerEmail = customer_details?.email || profile?.email || '-'
 
-      // ── STEP 1: Generate license key otomatis ──
-      // Gagal generate TIDAK menghentikan proses (plan sudah aktif).
+      // ── Catat transaksi untuk dashboard admin (non-fatal) ──
+      try {
+        const { data: leadRows } = await supabaseAdmin
+          .from('leads')
+          .select('promo_code')
+          .eq('midtrans_order_id', order_id)
+          .limit(1)
+        await supabaseAdmin.from('transactions').upsert(
+          {
+            order_id,
+            paid_at:        new Date().toISOString(),
+            buyer_email:    customerEmail !== '-' ? customerEmail : null,
+            plan_type:      paketKey,
+            gross_amount:   Math.round(parseFloat(gross_amount ?? '0')) || 0,
+            promo_code:     leadRows?.[0]?.promo_code ?? null,
+            affiliate_code: affiliateCodeFromOrder ? String(affiliateCodeFromOrder).toLowerCase() : null,
+            is_estimate:    false,
+          },
+          { onConflict: 'order_id' }
+        )
+      } catch (txErr) {
+        console.warn('[WEBHOOK] Transaction log failed (non-fatal):', txErr)
+      }
+
+      // ── STEP 1: Kode akun (license key) ──
+      // Akun baru sudah punya kode sejak daftar. Di sini kode itu ditandai order ini
+      // (order_id + paket_key) agar idempotency tetap jalan.
+      // Gagal TIDAK menghentikan proses (plan sudah aktif).
       let licenseKey: string | null = null
       let duplicateOrder = false
       const nowIso = new Date().toISOString()
 
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const candidate = genLicenseKey()
-        const { error: keyError } = await supabaseAdmin.from('license_keys').insert({
-          key:            candidate,
-          is_used:        true, // langsung used karena linked ke user
-          is_revoked:     false,
-          customer_name:  customerName,
-          used_by:        userId,
-          used_at:        nowIso,
-          created_at:     nowIso,
-          paket_key:      paketKey,
-          auto_generated: true,
-          order_id:       order_id,
-        })
+      // (a) Tandai kode akun yang sudah ada — atomik, hanya kalau belum ditandai order lain
+      const accountKey = await ensureAccountKey(userId, customerName)
+      if (accountKey) {
+        const { data: claimed, error: claimErr } = await supabaseAdmin
+          .from('license_keys')
+          .update({ order_id, paket_key: paketKey, auto_generated: true })
+          .eq('key', accountKey)
+          .is('order_id', null)
+          .select('key')
 
-        if (!keyError) {
-          licenseKey = candidate
-          console.log('[WEBHOOK] License key generated for order:', order_id)
-          break
-        }
-
-        if (keyError.code === '23505') {
-          // Unique violation: bisa tabrakan key, bisa request paralel untuk order yang sama
+        if (claimErr) {
+          console.warn('[WEBHOOK] Account key claim failed (non-fatal):', claimErr.message)
+        } else if (claimed && claimed.length > 0) {
+          licenseKey = accountKey
+          console.log('[WEBHOOK] Account key marked for order:', order_id)
+        } else {
+          // 0 baris: webhook paralel sudah memproses order ini, atau ini pembelian ke-2
           const { data: dup } = await supabaseAdmin
             .from('license_keys')
             .select('key')
             .eq('order_id', order_id)
             .maybeSingle()
-          if (dup) {
-            duplicateOrder = true
+          if (dup) duplicateOrder = true
+        }
+      }
+
+      // (b) Cadangan: baris baru khusus order ini (pembelian ke-2 / kode akun gagal dibuat)
+      if (!licenseKey && !duplicateOrder) {
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const candidate = genLicenseKey()
+          const { error: keyError } = await supabaseAdmin.from('license_keys').insert({
+            key:            candidate,
+            is_used:        true,
+            is_revoked:     false,
+            customer_name:  customerName,
+            used_by:        userId,
+            used_at:        nowIso,
+            created_at:     nowIso,
+            paket_key:      paketKey,
+            auto_generated: true,
+            order_id:       order_id,
+          })
+
+          if (!keyError) {
+            licenseKey = candidate
+            console.log('[WEBHOOK] License key generated for order:', order_id)
             break
           }
-          continue // tabrakan key → generate ulang
-        }
 
-        console.warn('[WEBHOOK] License key insert failed (non-fatal):', keyError.message)
-        break
+          if (keyError.code === '23505') {
+            const { data: dup } = await supabaseAdmin
+              .from('license_keys')
+              .select('key')
+              .eq('order_id', order_id)
+              .maybeSingle()
+            if (dup) {
+              duplicateOrder = true
+              break
+            }
+            continue // tabrakan key → generate ulang
+          }
+
+          console.warn('[WEBHOOK] License key insert failed (non-fatal):', keyError.message)
+          break
+        }
       }
 
       if (duplicateOrder) {
@@ -312,7 +371,7 @@ export async function POST(req: NextRequest) {
           const keyRow = licenseKey
             ? `
         <tr>
-          <td style="color: #666; font-size: 12px; padding: 6px 0;">Kode Akses</td>
+          <td style="color: #666; font-size: 12px; padding: 6px 0;">Kode Akun</td>
           <td style="color: #C9A84C; font-size: 16px; font-weight: 700; font-family: monospace; letter-spacing: 3px;">${licenseKey}</td>
         </tr>`
             : ''
@@ -380,6 +439,26 @@ export async function POST(req: NextRequest) {
         }
       } else {
         console.warn('[WEBHOOK] No valid user email, skipping confirmation email for order:', order_id)
+      }
+
+    // ── Affiliate tracking (non-fatal) ──
+      if (affiliateCodeFromOrder) {
+        try {
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://journalyze.my.id"
+          await fetch(`${baseUrl}/api/affiliate/track`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              order_id,
+              buyer_email: customerEmail,
+              buyer_name:  customerName,
+              plan_type:   paketKey,
+              affiliate_code: affiliateCodeFromOrder,
+            }),
+          })
+        } catch (affErr) {
+          console.warn("[WEBHOOK] Affiliate track failed (non-fatal):", affErr)
+        }
       }
 
     } else if (isPending) {

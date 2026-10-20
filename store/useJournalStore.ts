@@ -6,7 +6,7 @@ import type { User } from '@supabase/supabase-js';
 import type { Trade } from '@/lib/types';
 
 export type JournalPage = 'home' | 'risk' | 'plan' | 'data' | 'filter' | 'weekly' | 'monthly' | 'news' | 'profile' | 'gallery';
-export type UserPlan = 'free' | 'basic' | 'pro' | 'elite';
+export type UserPlan = 'free' | 'basic' | 'pro' | 'elite' | 'trial';
 
 export const BN_MAIN: JournalPage[] = ['home', 'risk', 'plan', 'data', 'filter'];
 export const BN_MORE: JournalPage[] = ['weekly', 'monthly', 'news', 'gallery'];
@@ -27,6 +27,11 @@ interface JournalState {
 
   userPlan: UserPlan;
   setPlan: (p: UserPlan) => void;
+
+  trialAvailable: boolean;
+  setTrialAvailable: (v: boolean) => void;
+  planExpiresAt: string | null;
+  setPlanExpiresAt: (v: string | null) => void;
 
   isDemoMode: boolean;
   setDemoMode: (v: boolean) => void;
@@ -56,6 +61,11 @@ interface JournalState {
   showConfirmModal: (title: string, msg: string, confirmLabel: string, onConfirm: () => void) => void;
   closeConfirmModal: () => void;
 
+  // ── Edit Trade (trigger dari halaman lain) ───────────────────────────────
+  editTradeTrigger: Trade | null;
+  triggerEditTrade: (trade: Trade) => void;
+  clearEditTradeTrigger: () => void;
+
   // ── Trade Breakdown ────────────────────────────────────────────────────────
   breakdownTrade: Trade | null;
   breakdownList: Trade[];
@@ -78,6 +88,11 @@ export const useJournalStore = create<JournalState>((set, get) => ({
 
   userPlan: 'free',
   setPlan: (userPlan) => set({ userPlan }),
+
+  trialAvailable: false,
+  setTrialAvailable: (trialAvailable) => set({ trialAvailable }),
+  planExpiresAt: null,
+  setPlanExpiresAt: (planExpiresAt) => set({ planExpiresAt }),
 
   isDemoMode: false,
   setDemoMode: (isDemoMode) => set({ isDemoMode }),
@@ -138,6 +153,11 @@ export const useJournalStore = create<JournalState>((set, get) => ({
   },
 
   closeBreakdown: () => set({ breakdownTrade: null, breakdownList: [], breakdownIndex: 0 }),
+
+  // ── Edit Trade trigger ──
+  editTradeTrigger: null,
+  triggerEditTrade: (trade) => set({ editTradeTrigger: trade }),
+  clearEditTradeTrigger: () => set({ editTradeTrigger: null }),
 
   setBreakdownIndex: (i) => {
     const { breakdownList } = get();

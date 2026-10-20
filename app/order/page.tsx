@@ -1,8 +1,9 @@
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { usePixel, setPixelContext } from '@/hooks/usePixel';
+import { fireEvent, getAffiliateCode, saveAffiliateCode, getOrCreateSessionId } from '@/components/AffiliateTracker';
 import './order.css';
 
 /* ── PAKET DATA ── */
@@ -56,6 +57,25 @@ const PAKET_DATA = {
   },
 } as const;
 
+/* ── PAKET DATA AFFILIATE (harga coret disesuaikan) ── */
+const PAKET_DATA_AFFILIATE = {
+  basic: {
+    ...({} as typeof PAKET_DATA.basic),
+    hargaCoret: 'Rp 149.000',
+    hargaSave:  'Hemat Rp 50.000',
+  },
+  pro: {
+    ...({} as typeof PAKET_DATA.pro),
+    hargaCoret: 'Rp 248.000',
+    hargaSave:  'Hemat Rp 99.000',
+  },
+  elite: {
+    ...({} as typeof PAKET_DATA.elite),
+    hargaCoret: 'Rp 497.000',
+    hargaSave:  'Hemat Rp 248.000',
+  },
+} as const;
+
 type PaketKey = keyof typeof PAKET_DATA;
 
 const WA_ADMIN = '6281311973602';
@@ -70,6 +90,8 @@ function validateEmail(val: string) {
 function validatePassword(val: string) {
   return val.length >= 8;
 }
+
+
 
 declare global {
   interface Window {
@@ -95,7 +117,7 @@ function OrderForm() {
   const [selectedPaket, setSelectedPaket] = useState<PaketKey>(initPaket);
   const [nama, setNama] = useState('');
   const [waNum, setWaNum] = useState('');
-  const emailFromUrl = searchParams.get("email") || "";
+  const emailFromUrl = searchParams.get('email') || '';
   const [email, setEmail] = useState(emailFromUrl);
   const [password, setPassword] = useState('');
   const [promo, setPromo] = useState('');
@@ -104,18 +126,100 @@ function OrderForm() {
   const [snapLoaded, setSnapLoaded] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // ── Affiliate state ──
+  const [affiliateInput, setAffiliateInput] = useState('');
+  const [affiliateCode, setAffiliateCode] = useState<string | null>(null); // kode final tervalidasi
+  const [affiliateStatus, setAffiliateStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
+  const [affiliateName, setAffiliateName] = useState('');
+  const affiliateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const paket = PAKET_DATA[selectedPaket];
+  const paketAffiliate = affiliateCode ? PAKET_DATA_AFFILIATE[selectedPaket] : null;
+  const hargaCoretDisplay = paketAffiliate?.hargaCoret ?? paket.hargaCoret;
+  const hargaSaveDisplay  = paketAffiliate?.hargaSave ?? null;
+
+  // ── Baca ?ref= dari URL saat mount, simpan ke localStorage ──
+  useEffect(() => {
+    const refParam = searchParams.get('ref');
+    if (refParam && refParam.trim()) {
+      const code = refParam.trim().toLowerCase();
+      saveAffiliateCode(code);
+      setAffiliateCode(code);
+      // Validasi ke API
+      validateAffiliateCode(code, true);
+    } else {
+      // Tidak ada ref di URL → cek localStorage
+      const lsCode = getAffiliateCode();
+      if (lsCode) {
+        setAffiliateCode(lsCode);
+        validateAffiliateCode(lsCode, true);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Validasi kode affiliate ke API ──
+  async function validateAffiliateCode(code: string, silent = false) {
+    if (!code.trim()) {
+      setAffiliateStatus('idle');
+      setAffiliateCode(null);
+      return;
+    }
+    if (!silent) setAffiliateStatus('checking');
+    try {
+      const res = await fetch(`/api/affiliate/validate?code=${encodeURIComponent(code.trim())}`);
+      const data = await res.json() as { valid: boolean; name?: string };
+      if (data.valid) {
+        setAffiliateStatus('valid');
+        setAffiliateName(data.name || '');
+        const finalCode = code.trim().toLowerCase();
+        setAffiliateCode(finalCode);
+        saveAffiliateCode(finalCode);
+        if (silent) setAffiliateInput(code.trim().toUpperCase());
+      } else {
+        setAffiliateStatus('invalid');
+        // Jangan hapus affiliateCode dari localStorage jika dari URL/LS dan ternyata invalid
+        // — kode input manual yang invalid tidak mengubah kode yang sudah tersimpan
+        if (!silent) setAffiliateCode(null);
+      }
+    } catch {
+      setAffiliateStatus('idle');
+    }
+  }
+
+  // ── Debounce input kode manual ──
+  function handleAffiliateInputChange(val: string) {
+    const upper = val.toUpperCase();
+    setAffiliateInput(upper);
+    setAffiliateStatus('idle');
+
+    if (affiliateDebounceRef.current) clearTimeout(affiliateDebounceRef.current);
+    if (!upper.trim()) {
+      setAffiliateStatus('idle');
+      // Kembalikan ke kode dari localStorage jika ada
+      const lsCode = getAffiliateCode();
+      setAffiliateCode(lsCode);
+      return;
+    }
+    affiliateDebounceRef.current = setTimeout(() => {
+      validateAffiliateCode(upper, false);
+    }, 600);
+  }
 
   // Meta Pixel: konteks harga paket untuk aturan event (nilai otomatis)
   useEffect(() => {
     setPixelContext({ value: PAKET_DATA[selectedPaket].nominal, content_name: 'Journalyze Premium' });
   }, [selectedPaket]);
 
-  // Sync paket ke URL
+  // Sync paket ke URL + fire plan_select event
+  const isFirstRender = useRef(true);
   useEffect(() => {
     const url = new URL(window.location.href);
     url.searchParams.set('paket', selectedPaket);
     window.history.replaceState({}, '', url.toString());
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    const code = getAffiliateCode();
+    if (code) fireEvent(code, 'plan_select', 'order', { plan_type: selectedPaket });
   }, [selectedPaket]);
 
   // Load Midtrans Snap script
@@ -155,10 +259,18 @@ function OrderForm() {
     setErrorMsg('');
 
     try {
-      // Meta Pixel: InitiateCheckout (form valid, sebelum fetch create-transaction)
       fireTrigger('pay_click', { value: paket.nominal, content_name: paket.label });
 
+
       const waFormatted = waNum.replace(/^0/, '62').replace(/\D/g, '');
+
+      // Ambil affiliate code final (dari state, sudah tervalidasi)
+      const finalAffiliateCode = affiliateCode || null;
+
+      // Fire checkout_start event
+      if (finalAffiliateCode) {
+        fireEvent(finalAffiliateCode, 'checkout_start', 'order', { plan_type: selectedPaket });
+      }
 
       const res = await fetch('/api/midtrans/create-transaction', {
         method: 'POST',
@@ -172,10 +284,17 @@ function OrderForm() {
           paket: selectedPaket,
           nominal: paket.nominal,
           paket_label: paket.label,
+          affiliate_code: finalAffiliateCode,
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json() as {
+        token?: string;
+        redirect_url?: string;
+        order_id?: string;
+        final_amount?: number;
+        error?: string;
+      };
 
       if (!res.ok) {
         setErrorMsg(data.error || 'Gagal memproses. Silakan coba lagi.');
@@ -184,10 +303,15 @@ function OrderForm() {
       }
 
       setSubmitting(false);
-      window.snap.pay(data.token, {
+      window.snap.pay(data.token!, {
         onSuccess: async () => {
-          // Meta Pixel: Purchase — fire SEBELUM router.push
-          await fireTrigger('payment_success', { value: Number(data.final_amount) || paket.nominal, content_name: paket.label, eventId: data.order_id });
+          await fireTrigger('payment_success', {
+            value: Number(data.final_amount) || paket.nominal,
+            content_name: paket.label,
+            eventId: data.order_id,
+          });
+          // Hapus affiliate dari localStorage setelah sukses bayar
+          try { localStorage.removeItem('jz_affiliate_ref'); } catch { /* noop */ }
           router.push('/journal?payment=success');
         },
         onPending: () => router.push('/journal?payment=pending'),
@@ -208,7 +332,7 @@ function OrderForm() {
           Journal<em>yze</em>
           <span className="order-nav-badge">v2.0</span>
         </a>
-        <a href="/home" className="order-nav-back">← Kembali</a>
+        <a href={affiliateCode ? `/?ref=${affiliateCode}` : '/home'} className="order-nav-back">← Kembali</a>
       </nav>
 
       <main className="order-main">
@@ -225,7 +349,7 @@ function OrderForm() {
           </p>
         </div>
 
-        {/* ── PILIHAN PAKET (di atas form) ── */}
+        {/* ── PILIHAN PAKET ── */}
         <div style={{ maxWidth: 900, margin: '0 auto 32px', padding: '0 16px' }}>
           <div style={{ fontSize: 12, color: '#666', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
             Pilih Paket
@@ -270,7 +394,9 @@ function OrderForm() {
                     {p.label}
                   </div>
                   <div style={{ color: '#555', fontSize: 11, textDecoration: 'line-through', marginBottom: 2 }}>
-                    {p.hargaCoret}
+                    {affiliateCode && PAKET_DATA_AFFILIATE[key as PaketKey]?.hargaCoret
+                        ? PAKET_DATA_AFFILIATE[key as PaketKey].hargaCoret
+                        : p.hargaCoret}
                   </div>
                   <div style={{ color: isSelected ? '#fff' : '#ccc', fontSize: 18, fontWeight: 700 }}>
                     {p.hargaReal}
@@ -372,8 +498,8 @@ function OrderForm() {
                   <div className="order-hint">Password untuk login ke Journalyze</div>
                 </div>
 
-                {/* Kode Promo */}
-                <div className="order-field">
+                {/* Kode Promo — sembunyikan jika dari affiliate */}
+                <div className="order-field" style={{ display: affiliateCode ? 'none' : 'block' }}>
                   <label className="order-label">Kode Promo <span className="optional">(opsional)</span></label>
                   <input
                     type="text"
@@ -383,6 +509,92 @@ function OrderForm() {
                     onChange={e => setPromo(e.target.value.toUpperCase())}
                     autoComplete="off"
                   />
+                </div>
+
+                {/* ── Kode Referral (Affiliate) ── */}
+                <div className="order-field">
+                  <label className="order-label">
+                    Kode Referral <span className="optional">(opsional)</span>
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type="text"
+                      className="order-input"
+                      placeholder="Contoh: ILHAM10"
+                      value={affiliateInput}
+                      onChange={e => handleAffiliateInputChange(e.target.value)}
+                      autoComplete="off"
+                      maxLength={12}
+                      style={{
+                        borderColor:
+                          affiliateStatus === 'valid' ? 'var(--gold, #C9A84C)' :
+                          affiliateStatus === 'invalid' ? '#c0392b' :
+                          undefined,
+                      }}
+                    />
+                    {affiliateStatus === 'checking' && (
+                      <span style={{
+                        position: 'absolute',
+                        right: 12,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        fontSize: 12,
+                        color: '#666',
+                      }}>
+                        ⏳
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Status chip */}
+                  {affiliateStatus === 'valid' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        background: 'rgba(201,168,76,0.12)',
+                        border: '1px solid rgba(201,168,76,0.4)',
+                        borderRadius: 20,
+                        padding: '3px 10px',
+                        fontSize: 12,
+                        color: 'var(--gold, #C9A84C)',
+                        fontWeight: 600,
+                      }}>
+                        ✓ Kode referral dikenali{affiliateName ? ` — ${affiliateName}` : ''}
+                      </div>
+                      <div style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
+                        borderRadius: 20, padding: '3px 10px', fontSize: 12, color: '#22c55e', fontWeight: 600,
+                      }}>
+                        🎁 {hargaSaveDisplay ?? 'Hemat'} dengan kode ini!
+                      </div>
+                    </div>
+                  )}
+                  {affiliateStatus === 'invalid' && (
+                    <div style={{ marginTop: 6, fontSize: 12, color: '#e74c3c' }}>
+                      Kode tidak ditemukan
+                    </div>
+                  )}
+
+                  {/* Chip jika kode dari URL/LS (silent valid) */}
+                  {affiliateStatus === 'idle' && affiliateCode && !affiliateInput && (
+                    <div style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      marginTop: 6,
+                      background: 'rgba(201,168,76,0.08)',
+                      border: '1px solid rgba(201,168,76,0.3)',
+                      borderRadius: 20,
+                      padding: '3px 10px',
+                      fontSize: 12,
+                      color: 'var(--gold, #C9A84C)',
+                    }}>
+                      ✓ Referral aktif: {affiliateCode.toUpperCase()}
+                    </div>
+                  )}
                 </div>
 
                 {/* Submit */}
@@ -424,7 +636,7 @@ function OrderForm() {
               </div>
               <div className="order-summary-body">
                 <div className="order-price-block">
-                  <div className="order-price-coret">{paket.hargaCoret}</div>
+                  <div className="order-price-coret">{hargaCoretDisplay}</div>
                   <div className="order-price-real">{paket.hargaReal}</div>
                   <div className="order-price-durasi">{paket.durasi}</div>
                 </div>

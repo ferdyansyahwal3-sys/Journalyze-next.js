@@ -60,7 +60,7 @@ export default function AnalyticsPanel({ active }: { active: boolean }) {
     : allUserData;
 
   return (
-    <div className={`tab-pane ${active ? 'active' : ''}`} id="tab-analytics">
+    <div id="tab-analytics">
       <div className="main" style={{ display: 'block' }}>
         {/* STATS — admin.html baris 274-279 */}
         <div className="analytics-stats">

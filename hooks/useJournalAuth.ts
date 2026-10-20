@@ -7,7 +7,7 @@ import { _sb } from '@/lib/supabaseClient';
 import { useJournalStore, type UserPlan } from '@/store/useJournalStore';
 
 const EDGE_FN_URL = 'https://icouldevrvvtkxiincle.supabase.co/functions/v1/validate-license';
-const VALID_PLANS: UserPlan[] = ['basic', 'pro', 'elite'];
+const VALID_PLANS: UserPlan[] = ['basic', 'pro', 'elite', 'trial'];
 
 export function useJournalAuth() {
   const setCurrentUser        = useJournalStore((s) => s.setCurrentUser);
@@ -15,6 +15,8 @@ export function useJournalAuth() {
   const setCloudLoading       = useJournalStore((s) => s.setCloudLoading);
   const setDisplayName        = useJournalStore((s) => s.setDisplayName);
   const setPlan               = useJournalStore((s) => s.setPlan);
+  const setTrialAvailable     = useJournalStore((s) => s.setTrialAvailable);
+  const setPlanExpiresAt      = useJournalStore((s) => s.setPlanExpiresAt);
 
   const [loginErr,   setLoginErr]   = useState('');
   const [regErr,     setRegErr]     = useState('');
@@ -32,24 +34,39 @@ export function useJournalAuth() {
         // Baca kolom plan langsung — sama dengan yang admin panel baca & set
         const { data: prof, error: profErr } = await _sb
           .from('profiles')
-          .select('is_blocked, display_name, notif_nickname, plan, plan_type, plan_expires_at')
+          .select('is_blocked, block_reason, display_name, notif_nickname, plan, plan_type, plan_expires_at, trial_used')
           .eq('id', user.id)
           .maybeSingle();
 
         if (profErr) {
           console.error('[Journalyze] Failed to fetch profile:', profErr.message);
           setPlan('free');
+          setTrialAvailable(false);
+          setPlanExpiresAt(null);
           setCurrentUser(user);
           setAuthOverlayVisible(false);
           return;
         }
 
-        // Cek blokir
-        if (prof?.is_blocked === true) {
+        // Akun sudah dihapus admin (profil tidak ada)
+        if (!prof) {
           await _sb.auth.signOut();
           setCurrentUser(null);
           setAuthOverlayVisible(true);
-          setBlockedMsg('⛔ Akun Anda telah dinonaktifkan oleh admin. Hubungi support untuk bantuan.');
+          setBlockedMsg('⛔ Akun ini sudah dihapus. Silakan daftar ulang atau hubungi support.');
+          return;
+        }
+
+        // Cek blokir
+        if (prof.is_blocked === true) {
+          await _sb.auth.signOut();
+          setCurrentUser(null);
+          setAuthOverlayVisible(true);
+          setBlockedMsg(
+            '⛔ Akun Anda diblokir oleh admin.' +
+            (prof.block_reason ? ' Alasan: ' + prof.block_reason + '.' : '') +
+            ' Hubungi support untuk bantuan.'
+          );
           return;
         }
 
@@ -63,7 +80,7 @@ export function useJournalAuth() {
         // ── Resolve plan: baca kolom plan langsung dari DB ──
         // Admin panel set kolom ini langsung → ini sumber kebenaran
         // free  → terkunci
-        // basic/pro/elite → fitur sesuai paket terbuka
+        // trial/basic/pro/elite → fitur sesuai paket terbuka
         const rawPlan = (prof?.plan_type ?? prof?.plan ?? 'free') as string;
         const resolvedPlan: UserPlan = VALID_PLANS.includes(rawPlan as UserPlan)
           ? (rawPlan as UserPlan)
@@ -80,6 +97,7 @@ export function useJournalAuth() {
         if (isExpired) {
           // Downgrade di DB. Jika RLS menolak, state lokal tetap diturunkan
           // dan cron (expire-plans) yang jadi sumber kebenaran di DB.
+          // trial_used sengaja TIDAK disentuh → jatah trial tidak kembali.
           const { error: downgradeErr } = await _sb
             .from('profiles')
             .update({ plan: 'free', plan_type: 'free', plan_expires_at: null })
@@ -90,11 +108,17 @@ export function useJournalAuth() {
           }
 
           setPlan('free');
-          localStorage.setItem('jz_plan_expired', '1');
-          console.log('[Journalyze] Plan basic expired, downgraded to free');
+          setPlanExpiresAt(null);
+          setTrialAvailable(false); // paket sebelumnya sudah expired → jatah trial tidak ditawarkan lagi
+          // Simpan paket yang expired ('trial' / 'basic' / dst) supaya toast bisa menyesuaikan teks
+          localStorage.setItem('jz_plan_expired', resolvedPlan);
+          console.log(`[Journalyze] Plan ${resolvedPlan} expired, downgraded to free`);
         } else {
-          console.log('[Journalyze] Plan resolved:', resolvedPlan, '| raw:', rawPlan);
+          console.log('[Journalyze] Plan resolved:', resolvedPlan, '| raw:', rawPlan, '| trial_used:', prof?.trial_used, '| email:', user.email);
           setPlan(resolvedPlan);
+          setPlanExpiresAt(prof?.plan_expires_at ?? null);
+          // Tawaran trial: hanya untuk free yang belum pernah trial / berbayar
+          setTrialAvailable(resolvedPlan === 'free' && !!prof && prof.trial_used !== true);
           // Hapus flag hanya jika user punya paket aktif (mis. sudah upgrade/perpanjang)
           if (resolvedPlan !== 'free') localStorage.removeItem('jz_plan_expired');
         }
@@ -102,6 +126,8 @@ export function useJournalAuth() {
       } catch (e: any) {
         console.warn('[Journalyze] profiles check skip:', e.message);
         setPlan('free');
+        setTrialAvailable(false);
+        setPlanExpiresAt(null);
       }
 
       setCurrentUser(user);
@@ -109,7 +135,7 @@ export function useJournalAuth() {
       setCloudLoading(true);
       setCloudLoading(false);
     },
-    [setCurrentUser, setAuthOverlayVisible, setCloudLoading, setDisplayName, setPlan]
+    [setCurrentUser, setAuthOverlayVisible, setCloudLoading, setDisplayName, setPlan, setTrialAvailable, setPlanExpiresAt]
   );
 
   // ── refreshPlan: fetch ulang dari DB tanpa logout ──
@@ -132,6 +158,8 @@ export function useJournalAuth() {
       } else {
         setCurrentUser(null);
         setPlan('free');
+        setTrialAvailable(false);
+        setPlanExpiresAt(null);
       }
     });
 
@@ -223,8 +251,10 @@ export function useJournalAuth() {
     setCurrentUser(null);
     setDisplayName('');
     setPlan('free');
+    setTrialAvailable(false);
+    setPlanExpiresAt(null);
     setAuthOverlayVisible(true);
-  }, [setCurrentUser, setDisplayName, setPlan, setAuthOverlayVisible]);
+  }, [setCurrentUser, setDisplayName, setPlan, setTrialAvailable, setPlanExpiresAt, setAuthOverlayVisible]);
 
   return {
     doLogin, doRegister, doLogout, refreshPlan,

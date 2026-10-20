@@ -27,8 +27,8 @@ import {
 } from '@/lib/riskCalc';
 
 const CURRENCY_PRE: Record<Currency, string> = { IDR: 'Rp', CENT: 'c', USD: '$' };
-const CURRENCY_PH: Record<Currency, string> = { IDR: 'Contoh: 3.000.000', CENT: 'Contoh: 20000', USD: 'Contoh: 200.00' };
-const CURRENCY_PHT: Record<Currency, string> = { IDR: 'Contoh: 10.000.000', CENT: 'Contoh: 60000', USD: 'Contoh: 600.00' };
+const CURRENCY_PH: Record<Currency, string> = { IDR: 'Contoh: 3.000.000', CENT: 'Contoh: 20.000', USD: 'Contoh: 200.00' };
+const CURRENCY_PHT: Record<Currency, string> = { IDR: 'Contoh: 10.000.000', CENT: 'Contoh: 60.000', USD: 'Contoh: 600.00' };
 
 export interface RiskRow { i: string; l: string; v: string; c: string }
 export interface RiskResult {
@@ -90,7 +90,7 @@ export function useRiskForm() {
 
   const onBalanceInput = useCallback((val: string, cur: Currency) => {
     let v = val;
-    if (cur === 'IDR') {
+    if (cur === 'IDR' || cur === 'CENT') {
       const n = v.replace(/[^0-9]/g, '');
       v = n ? parseInt(n).toLocaleString('id-ID') : '';
     }
@@ -353,7 +353,7 @@ export function useRiskForm() {
 
   const onTargetInput = useCallback((val: string, cur: Currency) => {
     let v = val;
-    if (cur === 'IDR') {
+    if (cur === 'IDR' || cur === 'CENT') {
       const n = v.replace(/[^0-9]/g, '');
       v = n ? parseInt(n).toLocaleString('id-ID') : '';
     }

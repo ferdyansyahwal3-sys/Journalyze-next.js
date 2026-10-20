@@ -7,10 +7,17 @@ import type { LicenseKey, PendingAction, UserAnalytics } from '@/lib/types';
 export const PAGE_SIZE = 20;
 
 type AuthStatus = 'checking' | 'loggedOut' | 'loggedIn';
-type Tab = 'keys' | 'analytics' | 'pixel' | 'users' | 'promos';
+
+// ── Tab utama (5 menu di sidebar/bottom nav)
+export type MainTab = 'dashboard' | 'users' | 'marketing' | 'affiliate' | 'pixel';
+
+// ── Sub-tab per menu yang punya sub-halaman
+export type UsersSubTab    = 'analytics' | 'management' | 'keys';
+export type MarketingSubTab = 'promo' | 'leads';
+
 type Toast = { msg: string; type: 'success' | 'error' | ''; id: number } | null;
 
-export type UserPlan = 'free' | 'basic' | 'pro' | 'elite';
+export type UserPlan = 'free' | 'basic' | 'pro' | 'elite' | 'trial';
 
 export interface UserProfile {
   id: string;
@@ -30,9 +37,15 @@ interface AdminState {
   setAdminLabel: (l: string) => void;
   setLoginError: (e: string) => void;
 
-  // tabs
-  activeTab: Tab;
-  setActiveTab: (t: Tab) => void;
+  // navigasi utama
+  activeTab: MainTab;
+  setActiveTab: (t: MainTab) => void;
+
+  // sub-navigasi
+  usersSubTab: UsersSubTab;
+  setUsersSubTab: (t: UsersSubTab) => void;
+  marketingSubTab: MarketingSubTab;
+  setMarketingSubTab: (t: MarketingSubTab) => void;
 
   // keys
   allKeys: LicenseKey[];
@@ -80,8 +93,14 @@ export const useAdminStore = create<AdminState>((set) => ({
   setAdminLabel: (adminLabel) => set({ adminLabel }),
   setLoginError: (loginError) => set({ loginError }),
 
-  activeTab: 'keys',
+  // default: dashboard (AnalyticsPanel)
+  activeTab: 'dashboard',
   setActiveTab: (activeTab) => set({ activeTab }),
+
+  usersSubTab: 'management',
+  setUsersSubTab: (usersSubTab) => set({ usersSubTab }),
+  marketingSubTab: 'promo',
+  setMarketingSubTab: (marketingSubTab) => set({ marketingSubTab }),
 
   allKeys: [],
   searchQuery: '',
@@ -109,7 +128,6 @@ export const useAdminStore = create<AdminState>((set) => ({
   setAnalyticsLoaded: (analyticsLoaded) => set({ analyticsLoaded }),
   setAllUserData: (allUserData) => set({ allUserData }),
 
-  // users
   allUsers: [],
   usersLoaded: false,
   usersSearch: '',

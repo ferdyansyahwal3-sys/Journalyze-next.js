@@ -1,4 +1,4 @@
-// components/journal/PageProfile.tsx — v2 fix: plan kolom + avatar debug
+// components/journal/PageProfile.tsx — v3: dukungan plan Trial
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -85,9 +85,10 @@ export default function PageProfile({ active, onOpenApiKey, onOpenNotif }: Profi
         if (data.plan) {
           // Normalize: 'pro', 'Pro', 'PRO' → 'Pro'
           const p = String(data.plan).toLowerCase();
-          if (p === 'pro')   planLabel = 'Pro';
+          if (p === 'pro')        planLabel = 'Pro';
           else if (p === 'elite') planLabel = 'Elite';
           else if (p === 'basic') planLabel = 'Basic';
+          else if (p === 'trial') planLabel = 'Trial';
           else planLabel = data.plan; // keep as-is kalau ada nilai lain
         } else if (data.is_activated) {
           planLabel = 'Pro';
@@ -189,8 +190,11 @@ export default function PageProfile({ active, onOpenApiKey, onOpenNotif }: Profi
 
   // Helper: tanggal aktif (prioritas plan_activated_at → activated_at)
   const activeDate = subscription?.planActivatedAt || subscription?.activatedAt;
+  // isPro = "bukan Free" (sengaja tetap true untuk Basic & Trial: dipakai untuk warna/ikon label).
+  // Chip eksklusif Pro/Elite pakai kombinasi !isBasic && !isTrial.
   const isPro      = subscription?.plan !== 'Free' && subscription?.plan != null;
   const isBasic    = subscription?.plan === 'Basic';
+  const isTrial    = subscription?.plan === 'Trial';
   const isFree     = !subscription || subscription.plan === 'Free';
 
   if (!active) return null;
@@ -241,7 +245,7 @@ export default function PageProfile({ active, onOpenApiKey, onOpenNotif }: Profi
             <div className="pp-badges">
               {subscription && (
                 <span className={`rbadge ${isPro ? 'mod' : 'agg'}`} style={{ fontSize: 8 }}>
-                  {isPro ? '⭐' : '🔒'} Journalyze {subscription.plan}
+                  {isTrial ? '🎁' : isPro ? '⭐' : '🔒'} Journalyze {subscription.plan}
                 </span>
               )}
               <span className={`rbadge ${apiKeyStatus.active ? 'cons' : 'agg'}`} style={{ fontSize: 8 }}>
@@ -426,10 +430,25 @@ export default function PageProfile({ active, onOpenApiKey, onOpenNotif }: Profi
                 )}
                 {subscription.planExpiresAt && (
                   <div style={{ fontSize: 11, color: 'var(--gold)', marginTop: 2 }}>
-                    Berlaku hingga {new Date(subscription.planExpiresAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    Berlaku hingga{' '}
+                    {isTrial
+                      ? new Date(subscription.planExpiresAt).toLocaleString('id-ID', {
+                          day: 'numeric', month: 'long', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit',
+                        })
+                      : new Date(subscription.planExpiresAt).toLocaleDateString('id-ID', {
+                          day: 'numeric', month: 'long', year: 'numeric',
+                        })}
                   </div>
                 )}
               </div>
+
+              {/* Tombol upgrade */}
+              {isTrial && (
+                <a href="/upgrade" className="btn btn-gold" style={{ textDecoration: 'none' }}>
+                  ⬆️ Upgrade
+                </a>
+              )}
               {!isPro && (
                 <a href="https://journalyze.my.id" target="_blank" rel="noopener noreferrer" className="btn btn-gold" style={{ textDecoration: 'none' }}>
                   ⬆️ Upgrade ke Pro
@@ -454,6 +473,20 @@ export default function PageProfile({ active, onOpenApiKey, onOpenNotif }: Profi
                     </div>
                   </div>
                 )}
+                {/* TRIAL */}
+                {isTrial && (
+                  <div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 8, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' }}>Selama trial, semua fitur terbuka</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {['✅ Semua Fitur Terbuka', '✅ Rekap Bulanan', '✅ Filter Lanjutan', '✅ AI Analisis', '✅ Foto MT5', '✅ Share Live', '✅ Export Data'].map(f => (
+                        <span key={f} className="chip chip-gold" style={{ fontSize: 9 }}>{f}</span>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 12, lineHeight: 1.6 }}>
+                      Setelah trial berakhir, akun kembali ke paket Free. Data trading kamu tetap tersimpan.
+                    </div>
+                  </div>
+                )}
                 {/* BASIC */}
                 {isBasic && (
                   <div>
@@ -471,8 +504,8 @@ export default function PageProfile({ active, onOpenApiKey, onOpenNotif }: Profi
                     </div>
                   </div>
                 )}
-                {/* PRO / ELITE */}
-                {isPro && !isBasic && (
+                {/* PRO / ELITE — chip "2 E-Book" & "Akses Lifetime" TIDAK untuk Trial */}
+                {isPro && !isBasic && !isTrial && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {['✅ Semua Fitur', '✅ Simpan Permanen', '✅ Rekap Bulanan', '✅ Filter Lanjutan', '✅ AI Analisis', '✅ Foto MT5', '✅ Share Live', '✅ Export Data', '✅ 2 E-Book Premium', '✅ Support WA'].map(f => (
                       <span key={f} className="chip chip-gold" style={{ fontSize: 9 }}>{f}</span>

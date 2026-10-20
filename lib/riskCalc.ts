@@ -21,9 +21,11 @@ export function applyRates(cache: Record<string, number>) {
 export type Currency = 'IDR' | 'CENT' | 'USD';
 
 export function parseInputVal(raw: string, cur: Currency): number {
-  if (cur === 'IDR') {
+  if (cur === 'IDR' || cur === 'CENT') {
+    // Titik sebagai pemisah ribuan, bukan desimal
     return parseFloat(raw.replace(/\./g, '').replace(/[^0-9]/g, '')) || 0;
   }
+  // USD: titik sebagai desimal (e.g. 100.50)
   return parseFloat(raw.replace(/[^0-9.]/g, '')) || 0;
 }
 
@@ -138,71 +140,77 @@ export function calcPL(
 // ── Risk profile formulas ──
 export function getTipeAkun(b: number, cur: Currency): string {
   if (!b) return '';
-  if (cur === 'CENT') {
-    if (b < 5000) return 'Cent';
-    if (b < 50000) return 'Cent/Micro';
-    return 'Cent/Standard';
-  }
-  if (b < 1e6) return 'Cent';
-  if (b < 5e6) return 'Micro';
-  if (b < 10e6) return 'Standard';
-  if (b < 30e6) return 'Standard';
-  return 'ECN / Pro';
+  // Konversi semua ke IDR dulu biar threshold konsisten
+  const kurs = liveRates.USD_IDR || 16462;
+  let bIDR: number;
+  if (cur === 'CENT') bIDR = (b / 100) * kurs;
+  else if (cur === 'USD') bIDR = b * kurs;
+  else bIDR = b;
+
+  if (bIDR < 1e6)  return 'Cent';             // < Rp 1jt
+  if (bIDR < 5e6)  return 'Cent / Standard';  // Rp 1jt – 5jt
+  if (bIDR < 30e6) return 'Standard';         // Rp 5jt – 30jt
+  return 'Standard / Pro';                     // > Rp 30jt
 }
 
 export function getAccDesc(t: string): string {
   const m: Record<string, string> = {
-    'Cent': 'Akun cent ideal untuk pemula, modal <Rp1jt.',
-    'Micro': 'Akun micro cocok Rp1-5jt.',
-    'Standard': 'Akun standard Rp5-30jt.',
-    'ECN / Pro': 'ECN/Pro untuk modal >Rp30jt, spread lebih rendah.',
+    'Cent':             'Akun Cent ideal untuk pemula & modal kecil (<Rp1jt). Tersedia di Exness & HFM.',
+    'Cent / Standard':  'Modal cukup untuk Cent atau mulai Standard. Cent lebih aman untuk belajar, Standard untuk yang sudah konsisten.',
+    'Standard':         'Akun Standard cocok untuk modal Rp5jt–30jt. Tersedia di hampir semua broker.',
+    'Standard / Pro':   'Modal besar, pertimbangkan akun Pro atau Raw Spread untuk spread lebih rendah.',
   };
   return m[t] || '—';
 }
 
 export function getLotByBal(b: number, cur: Currency): number {
+  if (!b || b <= 0) return 0.01;
+
+  // Akun CENT: threshold langsung dalam ¢ (skala beda dari IDR/USD)
   if (cur === 'CENT') {
-    if (!b || b <= 0) return 0.01;
-    if (b <= 500) return 0.01;
-    if (b <= 2000) return 0.02;
-    if (b <= 5000) return 0.05;
+    if (b <= 500)   return 0.01;
+    if (b <= 2000)  return 0.02;
+    if (b <= 5000)  return 0.05;
     if (b <= 10000) return 0.10;
     if (b <= 25000) return 0.20;
     if (b <= 60000) return 0.50;
     return 1.00;
   }
-  if (!b || b <= 0) return 0.01;
-  if (b <= 1500000) return 0.01;
-  if (b <= 5000000) return 0.02;
-  if (b <= 10000000) return 0.03;
-  if (b <= 20000000) return 0.05;
-  if (b <= 50000000) return 0.10;
-  if (b <= 100000000) return 0.20;
+
+  // IDR & USD: konversi ke IDR dulu
+  const kurs = liveRates.USD_IDR || 16462;
+  const bIDR = cur === 'USD' ? b * kurs : b;
+
+  if (bIDR <= 1_500_000)   return 0.01;
+  if (bIDR <= 5_000_000)   return 0.02;
+  if (bIDR <= 10_000_000)  return 0.03;
+  if (bIDR <= 20_000_000)  return 0.05;
+  if (bIDR <= 50_000_000)  return 0.10;
+  if (bIDR <= 100_000_000) return 0.20;
   return 0.50;
 }
 
 export function getLayer(b: number, cur: Currency): string {
   if (!b) return '';
-  if (cur === 'CENT') {
-    if (b <= 500) return '1 Layer';
-    if (b <= 2000) return '1-2 Layer';
-    if (b <= 5000) return '2-3 Layer';
-    if (b <= 10000) return '3-4 Layer';
-    if (b <= 25000) return '4-5 Layer';
-    return '5-7 Layer';
-  }
-  if (b < 5e5) return '1 Layer';
-  if (b <= 1e6) return '1-2 Layer';
-  if (b <= 3e6) return '2-3 Layer';
-  if (b <= 5e6) return '3-4 Layer';
-  if (b <= 10e6) return '4-5 Layer';
+  // Konversi ke IDR dulu
+  const kurs = liveRates.USD_IDR || 16462;
+  let bIDR: number;
+  if (cur === 'CENT') bIDR = (b / 100) * kurs;
+  else if (cur === 'USD') bIDR = b * kurs;
+  else bIDR = b;
+
+  if (bIDR < 500_000)   return '1 Layer';
+  if (bIDR <= 1_000_000) return '1-2 Layer';
+  if (bIDR <= 3_000_000) return '2-3 Layer';
+  if (bIDR <= 5_000_000) return '3-4 Layer';
+  if (bIDR <= 10_000_000) return '4-5 Layer';
   return '5-7 Layer';
 }
 
 export function getSL(p: string): string {
   const m: Record<string, string> = {
     XAUUSD: '30—50 pips', EURUSD: '20—30 pips', GBPUSD: '20—30 pips',
-    USDJPY: '20—30 pips', BTCUSD: '100—300 pips', NASDAQ: '50—150 pips',
+    USDJPY: '20—30 pips', BTCUSD: '40—50 pips', NASDAQ: '40—50 pips',
   };
   return m[p] || 'Sesuaikan dengan volatilitas';
 }

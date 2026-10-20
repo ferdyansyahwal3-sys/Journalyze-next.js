@@ -246,7 +246,7 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);over
 .pricing-tier{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--text3);margin-bottom:20px}
 .pricing-tier.gold{color:var(--gold)}
 .price-fake{font-size:14px;color:var(--text3);text-decoration:line-through;text-decoration-color:var(--red);margin-bottom:4px}
-.price-real{font-family:'Cormorant Garamond',serif;font-size:52px;font-weight:700;line-height:1;color:var(--text)}
+.price-real{font-family:'Cormorant Garamond',serif;font-size:52px;font-weight:700;line-height:1.15;color:var(--text);margin-bottom:12px}
 .pricing-card.highlight .price-real{background:linear-gradient(135deg,var(--gold),var(--gold2),var(--gold3));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .price-note{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin-bottom:24px}
 .pricing-divider{height:1px;background:var(--border);margin-bottom:24px}
@@ -419,3 +419,15 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);over
 .nav-dd-logout{color:var(--red)}
 .nav-dd-logout:hover{background:rgba(232,64,64,0.08);color:var(--red)}
 @media(max-width:640px){.nav-user-info{display:none}.nav-user-btn{padding:4px}}
+/* ── TESTIMONIAL MARQUEE ── */
+@keyframes testi-scroll-left {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+@keyframes testi-scroll-right {
+  from { transform: translateX(-50%); }
+  to   { transform: translateX(0); }
+}
+.testi-marquee-row:hover > div {
+  animation-play-state: paused;
+}

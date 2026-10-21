@@ -392,6 +392,19 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);over
 
   .home-section,.solution-section,.ebook-section,.pricing-section,.testimonial-section,.forwho-section,.faq-section,.final-cta-section,.honest-section,.proof-section,.guarantee-section{padding:64px 20px}
   .hero-section{padding:60px 20px}
+  .hero-headline{font-size:38px;line-height:1.15}
+  .hero-sub{font-size:14px}
+  .section-title,.ebook-title,.final-cta-title{font-size:38px;line-height:1.15}
+  .section-sub,.final-cta-sub{font-size:14px;line-height:1.7}
+  .hero-headline span{white-space:nowrap}
+  .hero-headline .line1{font-size:1em}
+  .hero-headline .line2{font-size:1em}
+  .hero-headline .line3{font-size:.72em;margin-top:6px}
+  .purchase-toast{max-width:220px;padding:10px 12px;gap:8px;border-radius:10px}
+  .purchase-toast .pt-avatar{width:28px;height:28px;font-size:13px}
+  .purchase-toast .pt-name{font-size:11px}
+  .purchase-toast .pt-action{font-size:10px}
+  .purchase-toast .pt-time{font-size:8px}
   .feature-grid{grid-template-columns:1fr}
   .ebook-books{flex-direction:column;align-items:center}
   .hero-cta-wrap{flex-direction:column}

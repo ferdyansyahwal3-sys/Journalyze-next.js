@@ -42,8 +42,8 @@ const PAKET_DATA = {
   elite: {
     label: 'Paket Elite',
     hargaCoret: 'Rp 497.000',
-    hargaReal: 'Rp 249.000',
-    nominal: 249000,
+    hargaReal: 'Rp 299.000',
+    nominal: 299000,
     durasi: 'Lifetime · + Review + Konsultasi 3x',
     fitur: [
       'Semua fitur Paket Pro',
@@ -72,7 +72,7 @@ const PAKET_DATA_AFFILIATE = {
   elite: {
     ...({} as typeof PAKET_DATA.elite),
     hargaCoret: 'Rp 497.000',
-    hargaSave:  'Hemat Rp 248.000',
+    hargaSave:  'Hemat Rp 198.000',
   },
 } as const;
 

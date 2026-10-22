@@ -50,7 +50,7 @@ const PAKETS = [
     paketLabel: 'PAKET ELITE',
     durasi: 'Akses Selamanya',
     hargaCoret: 'Rp 497.000',
-    harga: 'Rp 249.000',
+    harga: 'Rp 299.000',
     desc: 'Lengkap dengan review journal dan konsultasi personal.',
     badge: '🔥 Terlengkap',
     highlight: false,

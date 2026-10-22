@@ -314,8 +314,8 @@ function HomeAppInner() {
             <a href="#preview-fitur" onClick={(e)=>{e.preventDefault();document.getElementById('preview-fitur')?.scrollIntoView({behavior:'smooth'})}} className="btn-primary-gold">
               <Eye size={16} weight="fill" /><span>Lihat Fitur Lengkapnya ↓</span>
             </a>
-            <a href="/uji-coba" className="btn-secondary-outline">
-              <span>Coba Gratis Sekarang</span><ArrowRight size={14} />
+            <a href="#pricing" onClick={scrollToPricing} className="btn-secondary-outline">
+              <span>Gabung Sekarang</span><ArrowRight size={14} />
             </a>
           </div>
 
@@ -681,7 +681,7 @@ function HomeAppInner() {
           </div>
           <div className="pricing-card reveal delay-3">
             <div className="pricing-tier">Paket Elite</div>
-            <div><div className="price-fake">{hargaCoret.elite}</div><div className="price-real">249K</div></div>
+            <div><div className="price-fake">{hargaCoret.elite}</div><div className="price-real">299K</div></div>
             <div className="price-note">Lifetime · + Review + Konsultasi 3x</div>
             <div className="pricing-divider"/>
             <div className="pricing-features">
@@ -876,7 +876,6 @@ function HomeAppInner() {
             <div className="footer-links">
               <div className="footer-link-group">
                 <div className="fg-title">Produk</div>
-                <a href="/uji-coba">Uji Coba Gratis</a>
                 <a href="/journal">Login Akun</a>
                 <a href="/delivery">Aktivasi Key</a>
               </div>

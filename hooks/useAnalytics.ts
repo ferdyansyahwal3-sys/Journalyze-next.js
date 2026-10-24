@@ -21,7 +21,7 @@ export function useAnalytics() {
       // admin.html baris 691-699
       const { data: profiles, error: profErr } = await _sbAdmin
         .from('profiles')
-        .select('id,email,display_name,is_blocked,is_activated');
+        .select('id,email,display_name,is_blocked,is_activated,plan');
       if (profErr) throw profErr;
 
       const { data: trades, error: trErr } = await _sbAdmin
@@ -66,6 +66,7 @@ export function useAnalytics() {
             name: p.display_name || '',
             is_blocked: p.is_blocked,
             is_activated: p.is_activated,
+            plan: p.plan,
             trades: ut.length,
             wins,
             wr,

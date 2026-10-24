@@ -75,6 +75,7 @@ export interface UserAnalytics {
   id: string;
   email: string;
   name: string;
+  plan?: string;
   is_blocked?: boolean;
   is_activated?: boolean;
   trades: number;

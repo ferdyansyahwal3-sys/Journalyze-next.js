@@ -164,7 +164,7 @@ export async function activatePlan(p: MidtransPayload): Promise<ActivateResult> 
       .select('promo_code')
       .eq('midtrans_order_id', order_id)
       .limit(1)
-    await supabaseAdmin.from('transactions').upsert(
+    const { error: txUpsertErr } = await supabaseAdmin.from('transactions').upsert(
       {
         order_id,
         paid_at:        new Date().toISOString(),
@@ -177,6 +177,15 @@ export async function activatePlan(p: MidtransPayload): Promise<ActivateResult> 
       },
       { onConflict: 'order_id' }
     )
+    if (txUpsertErr) {
+      console.warn('[ACTIVATE] Transaction log failed (non-fatal):', {
+        order_id,
+        code: txUpsertErr.code,
+        message: txUpsertErr.message,
+      })
+    } else {
+      console.log('[ACTIVATE] Transaction logged for order:', order_id)
+    }
   } catch (txErr) {
     console.warn('[ACTIVATE] Transaction log failed (non-fatal):', txErr)
   }

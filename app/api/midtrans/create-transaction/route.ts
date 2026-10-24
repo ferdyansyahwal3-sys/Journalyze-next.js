@@ -60,11 +60,11 @@ export async function POST(req: NextRequest) {
       // Ambil data profile
       const { data: profile } = await _sbAdmin
         .from('profiles')
-        .select('display_name, phone, plan, admin_verified')
+        .select('display_name, phone, plan, plan_type, admin_verified')
         .eq('id', userId)
         .single()
 
-      if (profile?.plan === 'premium' && profile?.admin_verified === true) {
+      if (['pro', 'elite'].includes(String(profile?.plan_type ?? '').toLowerCase()) && profile?.admin_verified === true) {
         return NextResponse.json({ error: 'Akun ini sudah premium.' }, { status: 409 })
       }
 
@@ -103,11 +103,11 @@ export async function POST(req: NextRequest) {
 
         const { data: profile } = await _sbAdmin
           .from('profiles')
-          .select('plan, admin_verified')
+          .select('plan, plan_type, admin_verified')
           .eq('id', userId)
           .single()
 
-        if (profile?.plan === 'premium' && profile?.admin_verified === true) {
+        if (['pro', 'elite'].includes(String(profile?.plan_type ?? '').toLowerCase()) && profile?.admin_verified === true) {
           return NextResponse.json({ error: 'Email sudah terdaftar dan sudah premium. Silakan login.' }, { status: 409 })
         }
       } else {

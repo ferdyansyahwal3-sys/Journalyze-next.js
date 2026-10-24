@@ -225,7 +225,7 @@ function OrderForm() {
   // Load Midtrans Snap script
   useEffect(() => {
     const script = document.createElement('script');
-    script.src = 'https://app.midtrans.com/snap/snap.js';
+    script.src = process.env.NEXT_PUBLIC_MIDTRANS_SANDBOX === 'true' ? 'https://app.sandbox.midtrans.com/snap/snap.js' : 'https://app.midtrans.com/snap/snap.js';
     script.setAttribute('data-client-key', process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || '');
     script.onload = () => setSnapLoaded(true);
     document.head.appendChild(script);
@@ -312,7 +312,7 @@ function OrderForm() {
           });
           // Hapus affiliate dari localStorage setelah sukses bayar
           try { localStorage.removeItem('jz_affiliate_ref'); } catch { /* noop */ }
-          router.push('/journal?payment=success');
+          router.push(`/journal?payment=success&order_id=${encodeURIComponent(String(data.order_id ?? ''))}`);
         },
         onPending: () => router.push('/journal?payment=pending'),
         onError: () => setErrorMsg('Pembayaran gagal. Silakan coba lagi.'),

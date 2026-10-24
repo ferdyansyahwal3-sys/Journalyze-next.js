@@ -52,6 +52,7 @@ export function useLicenseKeys() {
           : null,
       }));
       setAllKeys(merged);
+      useAdminStore.getState().setUsersLoaded(false); // tab Users ikut dimuat ulang
     } catch (err: any) {
       console.error('loadKeys error:', err);
       showToast('❌ Gagal memuat data: ' + err.message, 'error');
@@ -150,9 +151,15 @@ export function useLicenseKeys() {
         .from('license_keys')
         .select('used_by')
         .eq('key', key)
-        .single();
+        .maybeSingle();
 
-      const userId = keyData?.used_by;
+      let userId = keyData?.used_by;
+      if (!userId) {
+        // key tanpa used_by, tapi masih dipakai sebuah profil
+        const { data: owner } = await _sbAdmin
+          .from('profiles').select('id').eq('license_key', key).maybeSingle();
+        userId = owner?.id;
+      }
 
       // 2. Hapus akun login dulu (FK CASCADE otomatis menghapus profiles, trades, dll)
       if (userId) {

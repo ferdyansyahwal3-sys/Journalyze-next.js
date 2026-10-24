@@ -1,9 +1,17 @@
 'use client';
 
 // components/admin/AffiliatePanel.tsx
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  UsersThree, Funnel, ClipboardText, ChartBar, Money, ArrowsClockwise,
+  Copy, DotsThree, MagnifyingGlass, Plus, X, PencilSimple, Power, Wallet,
+  Warning, LinkSimple, DownloadSimple, WhatsappLogo, Eye, Info,
+} from '@phosphor-icons/react';
+import type { Icon } from '@phosphor-icons/react';
 import { _sbAdmin } from '@/lib/supabaseClient';
 import { fmtDate } from '@/lib/adminHelpers';
+import { COMMISSION_MAP, PRICE_MAP } from '@/lib/affiliateConfig';
+import './affiliate.css';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Affiliate {
@@ -43,7 +51,7 @@ interface LinkEvent {
   affiliate_code: string;
   event_type: string;
   page: string;
-  referrer: string | null;
+  referrer?: string | null;
   session_id: string | null;
   plan_type: string | null;
 }
@@ -55,9 +63,22 @@ interface AffiliateWithStats extends Affiliate {
   // funnel
   landingViews: number;
   orderViews: number;
+  planSelects: number;
   checkoutStarts: number;
   conversions: number;
+  orderGap: number; // sesi yang lanjut ke pilih paket/checkout tanpa event order_view
 }
+
+type Section = 'list' | 'funnel' | 'referrals' | 'analytics' | 'payout';
+type StatusFilter = 'all' | 'active' | 'inactive';
+
+const TABS: { id: Section; label: string; Icon: Icon }[] = [
+  { id: 'list',      label: 'Affiliate',    Icon: UsersThree },
+  { id: 'funnel',    label: 'Funnel',       Icon: Funnel },
+  { id: 'referrals', label: 'Referral Log', Icon: ClipboardText },
+  { id: 'analytics', label: 'Analitik',     Icon: ChartBar },
+  { id: 'payout',    label: 'Payout',       Icon: Money },
+];
 
 const BASE_URL = 'https://journalyze.my.id';
 
@@ -83,6 +104,97 @@ function slugify(name: string) {
 }
 function codeify(name: string) {
   return (name.toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9]/g, '').slice(0, 8) + '10').slice(0, 12);
+}
+
+function refLink(a: Affiliate) {
+  return `${BASE_URL}/?ref=${a.affiliate_code.toLowerCase()}`;
+}
+
+// Tanda untuk partner yang perlu perhatian admin
+function getFlag(a: AffiliateWithStats): { label: string; hint: string } | null {
+  if (a.landingViews >= 20 && a.conversions === 0) {
+    return {
+      label: 'Belum ada pembelian',
+      hint: `${a.landingViews} kunjungan, belum ada yang membeli.`,
+    };
+  }
+  return null;
+}
+
+// ── Funnel: dihitung per SESI pengunjung (bukan per event) ──────────────────
+// Satu pengunjung yang reload halaman atau klik beberapa paket tetap dihitung satu kali.
+// Tahap yang tercapai otomatis menghitung tahap sebelumnya, jadi funnel tidak pernah
+// "naik" (mis. checkout > order page) walau ada event yang gagal tercatat.
+interface FunnelCounts {
+  landing: number; order: number; plan: number; checkout: number; paid: number;
+  orderGap: number;
+}
+
+function stageOf(e: LinkEvent): number {
+  if (e.event_type === 'landing_view' || (e.event_type === 'view' && e.page === 'landing')) return 0;
+  if (e.event_type === 'order_view'   || (e.event_type === 'view' && e.page === 'order'))   return 1;
+  if (e.event_type === 'plan_select') return 2;
+  if (e.event_type === 'checkout_start') return 3;
+  return -1;
+}
+
+function sessionKey(e: LinkEvent): string {
+  return e.session_id || `evt-${e.id}`;
+}
+
+function buildFunnel(evts: LinkEvent[], paid: number): FunnelCounts {
+  const sessions = new Map<string, { max: number; stages: Set<number> }>();
+  const exact = [0, 0, 0, 0]; // event tanpa session_id: dihitung apa adanya per tahap
+  evts.forEach(e => {
+    const st = stageOf(e);
+    if (st < 0) return;
+    if (!e.session_id) { exact[st]++; return; }
+    const cur = sessions.get(e.session_id) ?? { max: -1, stages: new Set<number>() };
+    cur.max = Math.max(cur.max, st);
+    cur.stages.add(st);
+    sessions.set(e.session_id, cur);
+  });
+
+  const reach = [exact[0], exact[1], exact[2], exact[3]];
+  let orderGap = 0;
+  sessions.forEach(sess => {
+    for (let k = 0; k <= sess.max; k++) reach[k]++;
+    if (sess.max >= 2 && !sess.stages.has(1)) orderGap++;
+  });
+
+  // Pembelian tanpa event checkout tetap mengangkat tahap-tahap sebelumnya
+  const checkout = Math.max(reach[3], paid);
+  const plan     = Math.max(reach[2], checkout);
+  const order    = Math.max(reach[1], plan);
+  const landing  = Math.max(reach[0], order);
+  return { landing, order, plan, checkout, paid, orderGap };
+}
+
+function uniqueSessions(evts: LinkEvent[]): number {
+  return new Set(evts.map(sessionKey)).size;
+}
+
+function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Ambil semua event per halaman 1000 baris (batas default API Supabase)
+const EVENT_COLS = 'id, created_at, affiliate_code, event_type, page, session_id, plan_type';
+async function fetchAllEvents(): Promise<LinkEvent[]> {
+  const pageSize = 1000;
+  const all: LinkEvent[] = [];
+  for (let from = 0; from < 50000; from += pageSize) {
+    const { data, error } = await _sbAdmin
+      .from('affiliate_link_events')
+      .select(EVENT_COLS)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (error || !data) break;
+    all.push(...(data as LinkEvent[]));
+    if (data.length < pageSize) break;
+  }
+  return all;
 }
 
 const EMPTY_FORM = {
@@ -123,45 +235,46 @@ function BarChart({ data, color = '#C9A84C' }: { data: { label: string; value: n
   );
 }
 
-// ── Funnel Step ─────────────────────────────────────────────────────────────
-function FunnelStep({
-  label, count, pct, color, isLast,
-}: {
-  label: string; count: number; pct?: string; color: string; isLast?: boolean;
-}) {
+// ── Grafik tren harian: kunjungan (garis) + hari ada pembelian (titik hijau) ──
+function TrendChart({ data }: { data: { label: string; visits: number; buys: number }[] }) {
+  const W = 640; const H = 170;
+  const padL = 30; const padR = 10; const padT = 16; const padB = 28;
+  const max = Math.max(...data.map(d => d.visits), 1);
+  const stepX = data.length > 1 ? (W - padL - padR) / (data.length - 1) : 0;
+  const yOf = (v: number) => padT + (H - padT - padB) * (1 - v / max);
+  const pts = data.map((d, i) => ({ x: padL + i * stepX, y: yOf(d.visits), d }));
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+  const area = `${line} L${pts[pts.length - 1].x.toFixed(1)} ${H - padB} L${pts[0].x.toFixed(1)} ${H - padB} Z`;
+  const ticks = Array.from(new Set([0, Math.ceil(max / 2), max]));
+  const labelEvery = data.length > 14 ? 5 : 1;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-      <div style={{
-        width: '100%', background: `${color}18`,
-        border: `1px solid ${color}55`, borderRadius: 10,
-        padding: '14px 8px', textAlign: 'center',
-      }}>
-        <div style={{
-          fontFamily: "'Cormorant Garamond', serif",
-          fontSize: 32, fontWeight: 700, color,
-        }}>
-          {count.toLocaleString('id-ID')}
-        </div>
-        <div style={{
-          fontFamily: "'JetBrains Mono', monospace",
-          fontSize: 9, color: 'var(--text3)',
-          textTransform: 'uppercase', letterSpacing: 1.2, marginTop: 4,
-        }}>
-          {label}
-        </div>
-        {pct && (
-          <div style={{
-            marginTop: 6, fontSize: 11, fontFamily: "'JetBrains Mono', monospace",
-            color, fontWeight: 700,
-          }}>
-            {pct} conv.
-          </div>
-        )}
-      </div>
-      {!isLast && (
-        <div style={{ fontSize: 16, color: 'var(--text3)', margin: '6px 0' }}>↓</div>
-      )}
-    </div>
+    <svg viewBox={`0 0 ${W} ${H}`} className="aff-trend" role="img" aria-label="Kunjungan per hari">
+      {ticks.map(t => (
+        <g key={t}>
+          <line x1={padL} x2={W - padR} y1={yOf(t)} y2={yOf(t)} className="aff-trend-grid" />
+          <text x={padL - 6} y={yOf(t) + 3} textAnchor="end" className="aff-trend-txt">{t}</text>
+        </g>
+      ))}
+      <path d={area} className="aff-trend-area" />
+      <path d={line} className="aff-trend-line" />
+      {pts.map((p, i) => (
+        <g key={i}>
+          {p.d.visits > 0 && <circle cx={p.x} cy={p.y} r={2.5} className="aff-trend-dot" />}
+          {p.d.buys > 0 && (
+            <>
+              <circle cx={p.x} cy={H - padB} r={5} className="aff-trend-buy">
+                <title>{`${p.d.label}: ${p.d.buys} pembelian`}</title>
+              </circle>
+              <text x={p.x} y={H - padB - 10} textAnchor="middle" className="aff-trend-buy-txt">{p.d.buys}</text>
+            </>
+          )}
+          {i % labelEvery === 0 && (
+            <text x={p.x} y={H - 8} textAnchor="middle" className="aff-trend-txt">{p.d.label}</text>
+          )}
+        </g>
+      ))}
+    </svg>
   );
 }
 
@@ -173,7 +286,7 @@ export default function AffiliatePanel({ active }: { active: boolean }) {
   const [loading,    setLoading]    = useState(false);
   const [loaded,     setLoaded]     = useState(false);
 
-  const [section, setSection] = useState<'list' | 'funnel' | 'referrals' | 'analytics' | 'payout'>('list');
+  const [section, setSection] = useState<Section>('list');
 
   const [modalOpen,   setModalOpen]   = useState(false);
   const [editTarget,  setEditTarget]  = useState<Affiliate | null>(null);
@@ -185,13 +298,30 @@ export default function AffiliatePanel({ active }: { active: boolean }) {
   const [filterStatus,      setFilterStatus]      = useState<'all' | 'pending' | 'paid'>('all');
   const [analyticsAffiliate, setAnalyticsAffiliate] = useState('all');
   const [funnelAffiliate,   setFunnelAffiliate]   = useState('all');
+  const [funnelRange,       setFunnelRange]       = useState<'all' | '7' | '30'>('all');
   const [payoutAffiliate,   setPayoutAffiliate]   = useState('all');
   const [payoutConfirming,  setPayoutConfirming]  = useState(false);
+
+  // Tab Affiliate: pencarian, filter, drawer, menu, konfirmasi
+  const [search,       setSearch]       = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [drawerId,     setDrawerId]     = useState<string | null>(null);
+  const [menu,         setMenu]         = useState<{ a: AffiliateWithStats; top: number; right: number } | null>(null);
+  const [confirmOff,   setConfirmOff]   = useState<AffiliateWithStats | null>(null);
 
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   function showToast(msg: string, ok = true) {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 3200);
+  }
+
+  async function copyText(text: string, okMsg: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast(okMsg);
+    } catch {
+      showToast('Gagal menyalin. Salin manual dari kolom.', false);
+    }
   }
 
   // ── Load ──────────────────────────────────────────────────────────────
@@ -201,7 +331,7 @@ export default function AffiliatePanel({ active }: { active: boolean }) {
       const [{ data: affData }, { data: refData }, { data: evData }] = await Promise.all([
         _sbAdmin.from('affiliates').select('*').order('created_at', { ascending: false }),
         _sbAdmin.from('affiliate_referrals').select('*').order('created_at', { ascending: false }),
-        _sbAdmin.from('affiliate_link_events').select('*').order('created_at', { ascending: false }),
+        fetchAllEvents().then(d => ({ data: d })),
       ]);
 
       const refs   = (refData ?? []) as Referral[];
@@ -212,16 +342,19 @@ export default function AffiliatePanel({ active }: { active: boolean }) {
       const withStats: AffiliateWithStats[] = (affData ?? []).map((a) => {
         const mine     = refs.filter(r => r.affiliate_id === a.id);
         const myEvents = evts.filter(e => e.affiliate_code === a.affiliate_code.toLowerCase());
+        const f = buildFunnel(myEvents, mine.length);
 
         return {
           ...(a as Affiliate),
           totalReferrals:  mine.length,
           totalPending:    mine.filter(r => r.status === 'pending').reduce((s, r) => s + r.commission, 0),
           totalRevenue:    mine.reduce((s, r) => s + r.plan_price, 0),
-          landingViews:    myEvents.filter(e => e.event_type === 'landing_view' || (e.event_type === 'view' && e.page === 'landing')).length,
-          orderViews:      myEvents.filter(e => e.event_type === 'order_view'   || (e.event_type === 'view' && e.page === 'order')).length,
-          checkoutStarts:  myEvents.filter(e => e.event_type === 'checkout_start').length,
-          conversions:     mine.length,
+          landingViews:    f.landing,
+          orderViews:      f.order,
+          planSelects:     f.plan,
+          checkoutStarts:  f.checkout,
+          conversions:     f.paid,
+          orderGap:        f.orderGap,
         };
       });
 
@@ -236,31 +369,157 @@ export default function AffiliatePanel({ active }: { active: boolean }) {
 
   useEffect(() => { if (active && !loaded) loadData(); }, [active, loaded, loadData]);
 
-  // ── Funnel data ────────────────────────────────────────────────────────
-  const funnelAffilObj = funnelAffiliate === 'all'
-    ? null
-    : affiliates.find(a => a.id === funnelAffiliate);
+  // Esc menutup menu, drawer, dan konfirmasi
+  useEffect(() => {
+    if (!active) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { setMenu(null); setConfirmOff(null); setDrawerId(null); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [active]);
 
-  const funnelEvents = funnelAffiliate === 'all'
-    ? events
-    : events.filter(e => e.affiliate_code === funnelAffilObj?.affiliate_code.toLowerCase());
+  // ── Ringkasan & daftar (tab Affiliate) ─────────────────────────────────
+  const summary = useMemo(() => {
+    const monthKey = new Date().toISOString().slice(0, 7);
+    const paidRefs = referrals.filter(r => r.status === 'paid');
+    const landing  = affiliates.reduce((s, a) => s + a.landingViews, 0);
+    const conv     = affiliates.reduce((s, a) => s + a.conversions, 0);
+    return {
+      activeCount:   affiliates.filter(a => a.is_active).length,
+      landing,
+      conv,
+      pending:       affiliates.reduce((s, a) => s + a.totalPending, 0),
+      pendingCount:  referrals.filter(r => r.status === 'pending').length,
+      paid:          paidRefs.reduce((s, r) => s + r.commission, 0),
+      paidThisMonth: paidRefs.filter(r => (r.paid_at ?? '').startsWith(monthKey)).reduce((s, r) => s + r.commission, 0),
+    };
+  }, [affiliates, referrals]);
 
-  const funnelRefs = funnelAffiliate === 'all'
-    ? referrals
-    : referrals.filter(r => r.affiliate_id === funnelAffiliate);
+  const paidByAffiliate = useMemo(() => {
+    const map: Record<string, number> = {};
+    referrals.forEach(r => {
+      if (r.status === 'paid') map[r.affiliate_id] = (map[r.affiliate_id] ?? 0) + r.commission;
+    });
+    return map;
+  }, [referrals]);
 
-  const fLandingViews   = funnelEvents.filter(e => e.event_type === 'landing_view'  || (e.event_type === 'view'  && e.page === 'landing')).length;
-  const fOrderViews     = funnelEvents.filter(e => e.event_type === 'order_view'    || (e.event_type === 'view'  && e.page === 'order')).length;
-  const fPlanSelects    = funnelEvents.filter(e => e.event_type === 'plan_select').length;
-  const fCheckoutStarts = funnelEvents.filter(e => e.event_type === 'checkout_start').length;
-  const fConversions    = funnelRefs.length;
+  const counts = useMemo(() => ({
+    all: affiliates.length,
+    active: affiliates.filter(a => a.is_active).length,
+    inactive: affiliates.filter(a => !a.is_active).length,
+  }), [affiliates]);
 
-  // Plan breakdown in funnel
-  const fPlanBreakdown = ['basic', 'pro', 'elite'].map(p => ({
-    plan: p,
-    selects: funnelEvents.filter(e => e.event_type === 'plan_select' && e.plan_type === p).length,
-    conversions: funnelRefs.filter(r => r.plan_type === p).length,
-  }));
+  const visibleAffiliates = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return affiliates.filter(a => {
+      if (statusFilter === 'active' && !a.is_active) return false;
+      if (statusFilter === 'inactive' && a.is_active) return false;
+      if (!q) return true;
+      return a.name.toLowerCase().includes(q)
+        || a.email.toLowerCase().includes(q)
+        || a.affiliate_code.toLowerCase().includes(q);
+    });
+  }, [affiliates, search, statusFilter]);
+
+  // ── Drawer detail ──────────────────────────────────────────────────────
+  const drawerAff = drawerId ? affiliates.find(a => a.id === drawerId) ?? null : null;
+  const drawerRefs = drawerAff ? referrals.filter(r => r.affiliate_id === drawerAff.id) : [];
+  const drawerSteps = drawerAff ? [
+    { lbl: 'Kunjungan',   val: drawerAff.landingViews },
+    { lbl: 'Order page',  val: drawerAff.orderViews },
+    { lbl: 'Pilih paket', val: drawerAff.planSelects },
+    { lbl: 'Checkout',    val: drawerAff.checkoutStarts },
+    { lbl: 'Bayar',       val: drawerAff.conversions },
+  ] : [];
+  const drawerMax = Math.max(...drawerSteps.map(s => s.val), 1);
+
+  function openMenu(e: React.MouseEvent<HTMLButtonElement>, a: AffiliateWithStats) {
+    e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    const menuH = 190;
+    const top = r.bottom + 6 + menuH > window.innerHeight ? Math.max(8, r.top - 6 - menuH) : r.bottom + 6;
+    setMenu({ a, top, right: Math.max(8, window.innerWidth - r.right) });
+  }
+
+  function requestToggle(a: AffiliateWithStats) {
+    setMenu(null);
+    if (a.is_active) { setDrawerId(null); setConfirmOff(a); }
+    else toggleActive(a);
+  }
+
+  function goPayout(a: AffiliateWithStats) {
+    setMenu(null); setDrawerId(null);
+    setPayoutAffiliate(a.id); setPayoutConfirming(false); setSection('payout');
+  }
+
+  // ── Funnel data (tab Funnel) ───────────────────────────────────────────
+  const funnelData = useMemo(() => {
+    const since = funnelRange === 'all' ? 0 : Date.now() - Number(funnelRange) * 86400000;
+    const inRange = (iso: string) => since === 0 || new Date(iso).getTime() >= since;
+    const evs  = events.filter(e => inRange(e.created_at));
+    const refs = referrals.filter(r => inRange(r.created_at));
+
+    const target = funnelAffiliate === 'all' ? null : affiliates.find(a => a.id === funnelAffiliate) ?? null;
+    const code   = target?.affiliate_code.toLowerCase();
+    const fEvents = target ? evs.filter(e => e.affiliate_code === code) : evs;
+    const fRefs   = target ? refs.filter(r => r.affiliate_id === target.id) : refs;
+
+    const totals = buildFunnel(fEvents, fRefs.length);
+
+    const steps = [
+      { lbl: 'Kunjungan',   desc: 'buka halaman landing',    val: totals.landing },
+      { lbl: 'Order page',  desc: 'buka halaman order',      val: totals.order },
+      { lbl: 'Pilih paket', desc: 'pilih salah satu paket',  val: totals.plan },
+      { lbl: 'Checkout',    desc: 'klik tombol bayar',       val: totals.checkout },
+      { lbl: 'Bayar',       desc: 'pembayaran berhasil',     val: totals.paid },
+    ];
+
+    // Titik bocor terbesar = transisi dengan persentase kehilangan tertinggi
+    let leak: { from: string; to: string; lost: number; of: number; pct: number } | null = null;
+    for (let i = 1; i < steps.length; i++) {
+      const prev = steps[i - 1].val; const cur = steps[i].val;
+      if (prev <= 0) continue;
+      const pct = (prev - cur) / prev;
+      if (!leak || pct > leak.pct) leak = { from: steps[i - 1].lbl, to: steps[i].lbl, lost: prev - cur, of: prev, pct };
+    }
+
+    const plans = ['basic', 'pro', 'elite'].map(p => ({
+      plan: p,
+      selects: uniqueSessions(fEvents.filter(e => e.event_type === 'plan_select' && e.plan_type === p)),
+      bought: fRefs.filter(r => r.plan_type === p).length,
+    }));
+
+    // Tren harian (7 atau 30 hari terakhir)
+    const days = funnelRange === '7' ? 7 : 30;
+    const visitsByDay = new Map<string, Set<string>>();
+    fEvents.forEach(e => {
+      if (stageOf(e) < 0) return;
+      const k = dayKey(new Date(e.created_at));
+      const set = visitsByDay.get(k) ?? new Set<string>();
+      set.add(sessionKey(e));
+      visitsByDay.set(k, set);
+    });
+    const buysByDay = new Map<string, number>();
+    fRefs.forEach(r => {
+      const k = dayKey(new Date(r.created_at));
+      buysByDay.set(k, (buysByDay.get(k) ?? 0) + 1);
+    });
+    const trend: { label: string; visits: number; buys: number }[] = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const k = dayKey(d);
+      trend.push({ label: `${d.getDate()}/${d.getMonth() + 1}`, visits: visitsByDay.get(k)?.size ?? 0, buys: buysByDay.get(k) ?? 0 });
+    }
+
+    const perAffiliate = affiliates.map(a => {
+      const c = a.affiliate_code.toLowerCase();
+      const ar = refs.filter(r => r.affiliate_id === a.id);
+      return { a, f: buildFunnel(evs.filter(e => e.affiliate_code === c), ar.length), revenue: ar.reduce((sum, r) => sum + r.plan_price, 0) };
+    }).sort((x, y) => y.f.paid - x.f.paid || y.f.landing - x.f.landing);
+
+    return { target, totals, steps, leak, plans, trend, days, perAffiliate };
+  }, [events, referrals, affiliates, funnelAffiliate, funnelRange]);
 
   // ── Analytics ─────────────────────────────────────────────────────────
   const analyticsRefs = analyticsAffiliate === 'all'
@@ -304,9 +563,11 @@ export default function AffiliatePanel({ active }: { active: boolean }) {
 
   // ── Modal helpers ──────────────────────────────────────────────────────
   function openAdd() {
+    setDrawerId(null); setMenu(null);
     setEditTarget(null); setForm({ ...EMPTY_FORM }); setFormError(''); setModalOpen(true);
   }
   function openEdit(a: Affiliate) {
+    setDrawerId(null); setMenu(null);
     setEditTarget(a);
     setForm({
       name: a.name, email: a.email, phone: a.phone ?? '',
@@ -393,6 +654,34 @@ export default function AffiliatePanel({ active }: { active: boolean }) {
     return true;
   });
 
+  // Export CSV (ikut filter Referral Log yang aktif)
+  function exportReferralsCsv() {
+    const header = ['Tanggal', 'Affiliate', 'Kode', 'Pembeli', 'Email', 'Paket', 'Harga', 'Komisi', 'Status', 'Batch'];
+    const rows = filteredReferrals.map(r => {
+      const aff = affiliates.find(a => a.id === r.affiliate_id);
+      return [
+        r.created_at.slice(0, 10), aff?.name ?? '', aff?.affiliate_code ?? '',
+        r.buyer_name ?? '', r.buyer_email, r.plan_type, r.plan_price, r.commission,
+        r.status, r.payout_batch ?? '',
+      ];
+    });
+    // Awali sel teks berbahaya (=, +, -, @) dengan petik agar tidak dieksekusi sebagai formula Excel
+    const esc = (v: string | number) => {
+      let s = String(v);
+      if (typeof v === 'string' && /^[=+\-@]/.test(s)) s = "'" + s;
+      return `"${s.replace(/"/g, '""')}"`;
+    };
+    const csv = [header, ...rows].map(row => row.map(esc).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `referral-affiliate-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast(`${rows.length} baris diekspor.`);
+  }
+
   const iStyle: React.CSSProperties = {
     width: '100%', background: 'var(--input-bg)', border: '1px solid var(--border)',
     borderRadius: 8, padding: '9px 13px', fontFamily: "'JetBrains Mono', monospace",
@@ -417,7 +706,7 @@ export default function AffiliatePanel({ active }: { active: boolean }) {
 
       {/* Toast */}
       {toast && (
-        <div style={{
+        <div role="status" style={{
           position: 'fixed', bottom: 28, right: 28, zIndex: 9999,
           background: 'var(--bg2)', border: `1px solid ${toast.ok ? 'var(--green-bd)' : 'var(--red-bd)'}`,
           color: toast.ok ? 'var(--green)' : 'var(--red)', borderRadius: 12, padding: '12px 20px',
@@ -428,337 +717,639 @@ export default function AffiliatePanel({ active }: { active: boolean }) {
       )}
 
       {/* Page header */}
-      <div className="ph" style={{ marginBottom: 20 }}>
+      <div className="aff-head">
         <div>
-          <div className="ph-label">Admin Panel</div>
-          <h2 className="ph-title">Sistem <em>Affiliate</em></h2>
-          <p className="ph-sub">Kelola partner, track funnel, dan proses payout komisi.</p>
+          <h2 className="aff-title">Sistem Affiliate</h2>
+          <p className="aff-subtitle">Kelola partner, pantau funnel, dan bayar komisi.</p>
         </div>
-        <button className="refresh-btn" onClick={loadData} disabled={loading}>
-          {loading ? <><span className="spinner" />Memuat...</> : '↻ Refresh'}
-        </button>
+        <div className="aff-head-actions">
+          <button className="aff-btn" onClick={loadData} disabled={loading}>
+            {loading ? <><span className="spinner" />Memuat...</> : <><ArrowsClockwise size={15} />Refresh</>}
+          </button>
+          <button className="aff-btn aff-btn-gold" onClick={openAdd}>
+            <Plus size={15} weight="bold" />Tambah affiliate
+          </button>
+        </div>
       </div>
 
       {/* Sub-nav tabs */}
-      <div style={{
-        display: 'flex', gap: 4, marginBottom: 20, background: 'var(--bg2)',
-        border: '1px solid var(--border)', borderRadius: 10, padding: 4,
-        width: 'fit-content', flexWrap: 'wrap',
-      }}>
-        {([
-          { id: 'list',      label: '👥 Affiliate' },
-          { id: 'funnel',    label: '🔻 Funnel' },
-          { id: 'referrals', label: '📋 Referral Log' },
-          { id: 'analytics', label: '📊 Analitik' },
-          { id: 'payout',    label: '💸 Payout' },
-        ] as const).map(t => (
-          <button key={t.id} onClick={() => setSection(t.id)}
-            style={{
-              padding: '7px 16px', borderRadius: 7, border: 'none', cursor: 'pointer',
-              fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: 1,
-              textTransform: 'uppercase', transition: 'all .2s',
-              background: section === t.id ? 'var(--gold-bg)' : 'transparent',
-              color: section === t.id ? 'var(--gold2)' : 'var(--text3)',
-              borderBottom: section === t.id ? '1px solid var(--gold-bd2)' : '1px solid transparent',
-            }}>
-            {t.label}
+      <div className="aff-tabs" role="tablist" aria-label="Menu affiliate">
+        {TABS.map(({ id, label, Icon }) => (
+          <button key={id} role="tab" aria-selected={section === id}
+            className={`aff-tab${section === id ? ' is-active' : ''}`}
+            onClick={() => setSection(id)}>
+            <Icon size={16} />{label}
           </button>
         ))}
       </div>
 
       {/* ═══ LIST ═══ */}
       {section === 'list' && (
-        <div className="section">
-          <div className="section-head">
-            <span className="section-title">Daftar Affiliate Partner</span>
-            <button className="gen-btn" onClick={openAdd}>+ Tambah Affiliate</button>
-          </div>
-          {loading && !affiliates.length ? (
-            <div className="empty-state"><span className="spinner" />Memuat data...</div>
-          ) : affiliates.length === 0 ? (
-            <div className="empty-state">Belum ada affiliate. Klik &quot;+ Tambah Affiliate&quot; untuk mulai.</div>
-          ) : (
-            <div className="table-wrap">
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
-                <thead>
-                  <tr>
-                    <TH>Nama & Email</TH>
-                    <TH>Kode / Link</TH>
-                    <TH>Status</TH>
-                    <TH>Landing</TH>
-                    <TH>Order Page</TH>
-                    <TH>Checkout</TH>
-                    <TH>Konversi</TH>
-                    <TH>Conv. Rate</TH>
-                    <TH>Komisi Pending</TH>
-                    <TH>Aksi</TH>
-                  </tr>
-                </thead>
-                <tbody>
-                  {affiliates.map((a, i) => (
-                    <tr key={a.id} style={{ background: i % 2 === 1 ? 'var(--row-alt)' : 'transparent' }}>
-                      <td style={{ padding: '12px 14px', borderBottom: '1px solid var(--border2)' }}>
-                        <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: 13 }}>{a.name}</div>
-                        <div className="email-text">{a.email}</div>
-                      </td>
-                      <td style={{ padding: '12px 14px', borderBottom: '1px solid var(--border2)' }}>
-                        <span className="key-mono" style={{ fontSize: 11, letterSpacing: 2 }}>{a.affiliate_code}</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                          <span className="date-text" style={{ fontSize: 10 }}>
-                            /?ref={a.affiliate_code.toLowerCase()}
-                          </span>
-                          <button onClick={() => {
-                            navigator.clipboard.writeText(`${BASE_URL}/?ref=${a.affiliate_code.toLowerCase()}`);
-                            showToast('Link disalin!');
-                          }} className="act-btn act-copy" style={{ padding: '2px 6px', fontSize: 10 }}>
-                            📋
-                          </button>
-                        </div>
-                      </td>
-                      <td style={{ padding: '12px 14px', borderBottom: '1px solid var(--border2)' }}>
-                        <span className={`badge ${a.is_active ? 'used' : 'unused'}`}>
-                          <span className="dot" />{a.is_active ? 'Aktif' : 'Nonaktif'}
-                        </span>
-                      </td>
-                      {/* Funnel mini stats */}
-                      {[
-                        { val: a.landingViews,   color: '#6366f1' },
-                        { val: a.orderViews,     color: '#C9A84C' },
-                        { val: a.checkoutStarts, color: '#f97316' },
-                        { val: a.conversions,    color: '#22c55e' },
-                      ].map((s, si) => (
-                        <td key={si} style={{ padding: '12px 14px', borderBottom: '1px solid var(--border2)', textAlign: 'right' }}>
-                          <span style={{
-                            fontFamily: "'Cormorant Garamond', serif",
-                            fontSize: 22, color: s.val > 0 ? s.color : 'var(--text3)', fontWeight: 700,
-                          }}>
-                            {s.val}
-                          </span>
-                        </td>
-                      ))}
-                      <td style={{ padding: '12px 14px', borderBottom: '1px solid var(--border2)', textAlign: 'right' }}>
-                        <span style={{
-                          fontFamily: "'JetBrains Mono', monospace", fontSize: 12,
-                          color: a.conversions > 0 ? '#22c55e' : 'var(--text3)',
-                        }}>
-                          {fmtPct(a.conversions, a.landingViews)}
-                        </span>
-                      </td>
-                      <td style={{ padding: '12px 14px', borderBottom: '1px solid var(--border2)', textAlign: 'right' }}>
-                        <span style={{
-                          fontFamily: "'Cormorant Garamond', serif", fontSize: 18, fontWeight: 700,
-                          color: a.totalPending > 0 ? 'var(--gold2)' : 'var(--text3)',
-                        }}>
-                          {a.totalPending > 0 ? fmtRp(a.totalPending) : '—'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '12px 14px', borderBottom: '1px solid var(--border2)' }}>
-                        {a.dashboard_token ? (
-                          <button onClick={() => {
-                            navigator.clipboard.writeText(`${BASE_URL}/affiliate/dashboard?token=${a.dashboard_token}`);
-                            showToast('Link dashboard disalin!');
-                          }} className="act-btn act-url" style={{ fontSize: 10 }}>
-                            📊 Salin Link
-                          </button>
-                        ) : <span style={{ fontSize: 11, color: 'var(--text3)' }}>—</span>}
-                      </td>
-                      <td style={{ padding: '12px 14px', borderBottom: '1px solid var(--border2)' }}>
-                        <div className="action-btns">
-                          <button className="act-btn act-copy" onClick={() => openEdit(a)}>Edit</button>
-                          <button
-                            className={`act-btn ${a.is_active ? 'act-revoke' : 'act-restore'}`}
-                            onClick={() => toggleActive(a)}>
-                            {a.is_active ? 'Nonaktifkan' : 'Aktifkan'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <>
+          <div className="aff-stats">
+            <div className="aff-stat">
+              <div className="aff-stat-lbl">Partner aktif</div>
+              <div className="aff-stat-val">{summary.activeCount}</div>
+              <div className="aff-stat-sub">dari {affiliates.length} partner</div>
             </div>
-          )}
+            <div className="aff-stat">
+              <div className="aff-stat-lbl">Konversi</div>
+              <div className="aff-stat-val">{summary.conv}</div>
+              <div className="aff-stat-sub">{fmtPct(summary.conv, summary.landing)} dari {summary.landing.toLocaleString('id-ID')} kunjungan</div>
+            </div>
+            <div className="aff-stat">
+              <div className="aff-stat-lbl">Komisi pending</div>
+              <div className={`aff-stat-val${summary.pending > 0 ? ' is-gold' : ''}`}>{fmtRp(summary.pending)}</div>
+              <div className="aff-stat-sub">{summary.pendingCount} referral menunggu dibayar</div>
+            </div>
+            <div className="aff-stat">
+              <div className="aff-stat-lbl">Sudah dibayar</div>
+              <div className="aff-stat-val">{fmtRp(summary.paid)}</div>
+              <div className="aff-stat-sub">bulan ini {fmtRp(summary.paidThisMonth)}</div>
+            </div>
+          </div>
+
+          <div className="aff-card">
+            <div className="aff-toolbar">
+              <div className="aff-search">
+                <MagnifyingGlass size={16} />
+                <input type="search" value={search} placeholder="Cari nama, email, atau kode"
+                  aria-label="Cari affiliate" onChange={e => setSearch(e.target.value)} />
+              </div>
+              <div className="aff-seg" role="group" aria-label="Filter status">
+                {([['all', 'Semua'], ['active', 'Aktif'], ['inactive', 'Nonaktif']] as const).map(([id, lbl]) => (
+                  <button key={id} className={statusFilter === id ? 'is-active' : ''}
+                    aria-pressed={statusFilter === id} onClick={() => setStatusFilter(id)}>
+                    {lbl}<b>{counts[id]}</b>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {loading && !affiliates.length ? (
+              <div aria-busy="true" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {[0, 1, 2].map(i => <div key={i} className="aff-skel" style={{ height: 44 }} />)}
+              </div>
+            ) : affiliates.length === 0 ? (
+              <div className="aff-empty">
+                <strong>Belum ada affiliate</strong>
+                Tambahkan partner pertama untuk mulai melacak klik, konversi, dan komisi.
+                <div><button className="aff-btn aff-btn-gold" onClick={openAdd}><Plus size={15} weight="bold" />Tambah affiliate</button></div>
+              </div>
+            ) : visibleAffiliates.length === 0 ? (
+              <div className="aff-empty">
+                <strong>Tidak ada partner yang cocok</strong>
+                Ubah kata kunci atau filter status.
+              </div>
+            ) : (
+              <div className="aff-table-wrap">
+                <table className="aff-table">
+                  <thead>
+                    <tr>
+                      <th>Partner</th>
+                      <th>Kode & link</th>
+                      <th>Status</th>
+                      <th>Funnel</th>
+                      <th className="aff-th-right">Conv. rate</th>
+                      <th className="aff-th-right">Komisi pending</th>
+                      <th className="aff-th-right">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleAffiliates.map(a => {
+                      const flag = getFlag(a);
+                      const paid = paidByAffiliate[a.id] ?? 0;
+                      const steps = [
+                        { lbl: 'Kunjungan', tip: 'Buka halaman landing', val: a.landingViews, win: false },
+                        { lbl: 'Order page', tip: 'Buka halaman order', val: a.orderViews, win: false },
+                        { lbl: 'Checkout', tip: 'Klik tombol bayar', val: a.checkoutStarts, win: false },
+                        { lbl: 'Bayar', tip: 'Pembayaran berhasil', val: a.conversions, win: true },
+                      ];
+                      return (
+                        <tr key={a.id} className={`aff-row${a.is_active ? '' : ' is-off'}`}
+                          onClick={() => setDrawerId(a.id)}>
+                          <td>
+                            <button className="aff-name-btn"
+                              onClick={e => { e.stopPropagation(); setDrawerId(a.id); }}>
+                              {a.name}
+                            </button>
+                            <div className="aff-sub">{a.email}</div>
+                          </td>
+                          <td>
+                            <div className="aff-code-row">
+                              <span className="aff-code">{a.affiliate_code}</span>
+                              <button className="aff-icon-btn" aria-label={`Salin link referral ${a.name}`}
+                                title="Salin link referral"
+                                onClick={e => { e.stopPropagation(); copyText(refLink(a), 'Link referral disalin!'); }}>
+                                <Copy size={15} />
+                              </button>
+                            </div>
+                            <div className="aff-sub aff-mono">/?ref={a.affiliate_code.toLowerCase()}</div>
+                          </td>
+                          <td>
+                            <span className={`aff-chip${a.is_active ? ' is-on' : ''}`}>
+                              {a.is_active ? 'Aktif' : 'Nonaktif'}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="aff-funnel">
+                              {steps.map(s => (
+                                <div key={s.lbl} className="aff-fn-step" title={s.tip}>
+                                  <span className={`aff-fn-val${s.val === 0 ? ' is-zero' : s.win ? ' is-win' : ''}`}>
+                                    {s.val}
+                                  </span>
+                                  <span className="aff-fn-lbl">{s.lbl}</span>
+                                </div>
+                              ))}
+                            </div>
+                            {flag && (
+                              <div className="aff-flag" title={flag.hint}>
+                                <Warning size={13} weight="fill" />{flag.label}
+                              </div>
+                            )}
+                          </td>
+                          <td className="aff-td-right">
+                            <span className={`aff-rate${a.conversions > 0 ? ' is-win' : ''}`}>
+                              {fmtPct(a.conversions, a.landingViews)}
+                            </span>
+                          </td>
+                          <td className="aff-td-right">
+                            <span className={`aff-money${a.totalPending > 0 ? ' is-gold' : ''}`}>
+                              {a.totalPending > 0 ? fmtRp(a.totalPending) : '—'}
+                            </span>
+                            {paid > 0 && <div className="aff-sub">dibayar {fmtRp(paid)}</div>}
+                          </td>
+                          <td>
+                            <div className="aff-actions">
+                              {a.totalPending > 0 && (
+                                <button className="aff-btn aff-btn-gold aff-btn-sm"
+                                  onClick={e => { e.stopPropagation(); goPayout(a); }}>
+                                  Bayar
+                                </button>
+                              )}
+                              <button className="aff-icon-btn" aria-label={`Edit ${a.name}`} title="Edit"
+                                onClick={e => { e.stopPropagation(); openEdit(a); }}>
+                                <PencilSimple size={16} />
+                              </button>
+                              <button className="aff-icon-btn" aria-label={`Menu lainnya untuk ${a.name}`}
+                                aria-haspopup="menu" title="Lainnya"
+                                onClick={e => openMenu(e, a)}>
+                                <DotsThree size={20} weight="bold" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {affiliates.length > 0 && (
+              <div className="aff-legend">
+                <span><b>Kunjungan</b> buka halaman landing</span>
+                <span><b>Order page</b> buka halaman order</span>
+                <span><b>Checkout</b> klik tombol bayar</span>
+                <span><b>Bayar</b> pembayaran berhasil</span>
+                <span>Dihitung per sesi pengunjung.</span>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Menu titik tiga */}
+      {menu && (
+        <>
+          <div className="aff-menu-backdrop" onClick={() => setMenu(null)} />
+          <div className="aff-menu" role="menu" style={{ top: menu.top, right: menu.right }}>
+            <button role="menuitem" onClick={() => { setDrawerId(menu.a.id); setMenu(null); }}>
+              <Eye size={16} />Lihat detail
+            </button>
+            <button role="menuitem" onClick={() => { copyText(refLink(menu.a), 'Link referral disalin!'); setMenu(null); }}>
+              <LinkSimple size={16} />Salin link referral
+            </button>
+            {menu.a.dashboard_token && (
+              <button role="menuitem" onClick={() => {
+                copyText(`${BASE_URL}/affiliate/dashboard?token=${menu.a.dashboard_token}`, 'Link dashboard partner disalin!');
+                setMenu(null);
+              }}>
+                <ChartBar size={16} />Salin link dashboard partner
+              </button>
+            )}
+            {menu.a.totalPending > 0 && (
+              <button role="menuitem" onClick={() => goPayout(menu.a)}>
+                <Wallet size={16} />Bayar komisi
+              </button>
+            )}
+            <hr />
+            <button role="menuitem" className={menu.a.is_active ? 'is-danger' : ''} onClick={() => requestToggle(menu.a)}>
+              <Power size={16} />{menu.a.is_active ? 'Nonaktifkan' : 'Aktifkan'}
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Drawer detail partner */}
+      {drawerAff && (
+        <>
+          <div className="aff-scrim" onClick={() => setDrawerId(null)} />
+          <aside className="aff-drawer" role="dialog" aria-modal="true" aria-label={`Detail ${drawerAff.name}`}>
+            <div className="aff-dr-head">
+              <div style={{ minWidth: 0 }}>
+                <h3 className="aff-dr-name">{drawerAff.name}</h3>
+                <div className="aff-sub" style={{ marginBottom: 10 }}>{drawerAff.email}</div>
+                <span className={`aff-chip${drawerAff.is_active ? ' is-on' : ''}`}>
+                  {drawerAff.is_active ? 'Aktif' : 'Nonaktif'}
+                </span>
+              </div>
+              <button className="aff-icon-btn" aria-label="Tutup detail" onClick={() => setDrawerId(null)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="aff-dr-body">
+              <section className="aff-dr-sec">
+                <h4>Link</h4>
+                <dl className="aff-kv">
+                  <dt>Kode</dt>
+                  <dd><span className="aff-code">{drawerAff.affiliate_code}</span></dd>
+                  <span />
+                  <dt>Link referral</dt>
+                  <dd>{refLink(drawerAff).replace('https://', '')}</dd>
+                  <button className="aff-icon-btn" aria-label="Salin link referral"
+                    onClick={() => copyText(refLink(drawerAff), 'Link referral disalin!')}>
+                    <Copy size={15} />
+                  </button>
+                  <dt>Dashboard partner</dt>
+                  {drawerAff.dashboard_token ? (
+                    <>
+                      <dd>/affiliate/dashboard</dd>
+                      <button className="aff-icon-btn" aria-label="Salin link dashboard partner"
+                        onClick={() => copyText(`${BASE_URL}/affiliate/dashboard?token=${drawerAff.dashboard_token}`, 'Link dashboard partner disalin!')}>
+                        <Copy size={15} />
+                      </button>
+                    </>
+                  ) : (
+                    <><dd className="is-empty">Belum ada token</dd><span /></>
+                  )}
+                </dl>
+              </section>
+
+              <section className="aff-dr-sec">
+                <h4>Funnel</h4>
+                <div className="aff-steps">
+                  {drawerSteps.map((s, i) => (
+                    <div key={s.lbl}>
+                      <div className="aff-step-top">
+                        <span><b>{s.val}</b>{s.lbl}</span>
+                        <span>{i === 0 ? '' : `${fmtPct(s.val, drawerSteps[i - 1].val)} dari tahap sebelumnya`}</span>
+                      </div>
+                      <div className="aff-bar">
+                        <i className={i === drawerSteps.length - 1 ? 'is-win' : ''}
+                          style={{ width: `${Math.round((s.val / drawerMax) * 100)}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {getFlag(drawerAff) && (
+                  <div className="aff-flag" style={{ marginTop: 12 }}>
+                    <Warning size={13} weight="fill" />{getFlag(drawerAff)!.hint}
+                  </div>
+                )}
+              </section>
+
+              <section className="aff-dr-sec">
+                <h4>Komisi</h4>
+                <div className="aff-mini-stats">
+                  <div className="aff-mini">
+                    <span className="aff-stat-lbl">Pending</span>
+                    <span className={`aff-money${drawerAff.totalPending > 0 ? ' is-gold' : ''}`}>{fmtRp(drawerAff.totalPending)}</span>
+                  </div>
+                  <div className="aff-mini">
+                    <span className="aff-stat-lbl">Sudah dibayar</span>
+                    <span className="aff-money">{fmtRp(paidByAffiliate[drawerAff.id] ?? 0)}</span>
+                  </div>
+                  <div className="aff-mini">
+                    <span className="aff-stat-lbl">Total penjualan</span>
+                    <span className="aff-money">{fmtRp(drawerAff.totalRevenue)}</span>
+                  </div>
+                </div>
+                <dl className="aff-kv" style={{ marginTop: 14 }}>
+                  <dt style={{ gridColumn: '1 / -1', marginBottom: 2 }}>Komisi per penjualan (sama untuk semua partner)</dt>
+                  {(['basic', 'pro', 'elite'] as const).map(k => (
+                    <div key={k} style={{ display: 'contents' }}>
+                      <dt style={{ textTransform: 'capitalize' }}>{k}</dt>
+                      <dd>{fmtRp(COMMISSION_MAP[k])} <span style={{ color: 'var(--text3)' }}>({Math.round((COMMISSION_MAP[k] / PRICE_MAP[k]) * 100)}% dari {fmtRp(PRICE_MAP[k])})</span></dd>
+                      <span />
+                    </div>
+                  ))}
+                </dl>
+              </section>
+
+              <section className="aff-dr-sec">
+                <h4>Rekening & kontak</h4>
+                <dl className="aff-kv">
+                  <dt>Bank</dt>
+                  <dd className={drawerAff.bank_name ? '' : 'is-empty'}>{drawerAff.bank_name || 'Belum diisi'}</dd>
+                  <span />
+                  <dt>No. rekening</dt>
+                  <dd className={drawerAff.bank_account ? '' : 'is-empty'}>{drawerAff.bank_account || 'Belum diisi'}</dd>
+                  {drawerAff.bank_account ? (
+                    <button className="aff-icon-btn" aria-label="Salin nomor rekening"
+                      onClick={() => copyText(drawerAff.bank_account!, 'Nomor rekening disalin!')}>
+                      <Copy size={15} />
+                    </button>
+                  ) : <span />}
+                  <dt>Atas nama</dt>
+                  <dd className={drawerAff.bank_holder ? '' : 'is-empty'}>{drawerAff.bank_holder || 'Belum diisi'}</dd>
+                  <span />
+                  <dt>WhatsApp</dt>
+                  {drawerAff.phone ? (
+                    <>
+                      <dd>
+                        <a href={`https://wa.me/${drawerAff.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer">
+                          {drawerAff.phone}
+                        </a>
+                      </dd>
+                      <WhatsappLogo size={16} color="var(--text3)" />
+                    </>
+                  ) : (
+                    <><dd className="is-empty">Belum diisi</dd><span /></>
+                  )}
+                </dl>
+              </section>
+
+              <section className="aff-dr-sec">
+                <h4>Referral terbaru</h4>
+                {drawerRefs.length === 0 ? (
+                  <div className="aff-sub">Belum ada pembelian lewat link partner ini.</div>
+                ) : (
+                  <div className="aff-ref-list">
+                    {drawerRefs.slice(0, 5).map(r => (
+                      <div key={r.id} className="aff-ref">
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 13, color: 'var(--text)' }}>
+                            {r.buyer_name || r.buyer_email}
+                          </div>
+                          <div className="aff-sub">{fmtDate(r.created_at)} · {r.plan_type}</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div className="aff-money is-gold" style={{ fontSize: 17 }}>{fmtRp(r.commission)}</div>
+                          <span className={`aff-chip${r.status === 'paid' ? ' is-on' : ' is-gold'}`} style={{ marginTop: 4 }}>
+                            {r.status === 'paid' ? 'Paid' : 'Pending'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {drawerRefs.length > 5 && (
+                  <button className="aff-btn aff-btn-sm" style={{ marginTop: 10 }}
+                    onClick={() => { setFilterAffiliate(drawerAff.id); setFilterStatus('all'); setDrawerId(null); setSection('referrals'); }}>
+                    Lihat semua {drawerRefs.length} referral
+                  </button>
+                )}
+              </section>
+
+              {drawerAff.notes && (
+                <section className="aff-dr-sec">
+                  <h4>Catatan internal</h4>
+                  <div className="aff-note">{drawerAff.notes}</div>
+                </section>
+              )}
+            </div>
+
+            <div className="aff-dr-foot">
+              {drawerAff.totalPending > 0 && (
+                <button className="aff-btn aff-btn-gold" onClick={() => goPayout(drawerAff)}>
+                  <Wallet size={15} />Bayar {fmtRp(drawerAff.totalPending)}
+                </button>
+              )}
+              <button className="aff-btn" onClick={() => openEdit(drawerAff)}>
+                <PencilSimple size={15} />Edit
+              </button>
+              <button className={`aff-btn${drawerAff.is_active ? ' aff-btn-danger' : ''}`}
+                onClick={() => requestToggle(drawerAff)}>
+                <Power size={15} />{drawerAff.is_active ? 'Nonaktifkan' : 'Aktifkan'}
+              </button>
+            </div>
+          </aside>
+        </>
+      )}
+
+      {/* Konfirmasi nonaktifkan */}
+      {confirmOff && (
+        <div id="modal-overlay" className="show"
+          onClick={e => { if (e.target === e.currentTarget) setConfirmOff(null); }}>
+          <div className="modal" style={{ maxWidth: 440 }} role="dialog" aria-modal="true"
+            onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <span className="modal-title">Nonaktifkan {confirmOff.name}?</span>
+              <button className="modal-close" aria-label="Tutup" onClick={() => setConfirmOff(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ margin: 0, fontFamily: "'Outfit', sans-serif", fontSize: 13, lineHeight: 1.6, color: 'var(--text2)' }}>
+                Partner tidak bisa membuka dashboard-nya selama nonaktif. Komisi pending
+                ({fmtRp(confirmOff.totalPending)}) tetap tersimpan dan bisa dibayar kapan saja.
+                Kamu bisa mengaktifkannya lagi dari menu yang sama.
+              </p>
+            </div>
+            <div className="modal-foot">
+              <button className="modal-cancel" onClick={() => setConfirmOff(null)}>Batal</button>
+              <button className="gen-btn" onClick={() => { const a = confirmOff; setConfirmOff(null); toggleActive(a); }}>
+                Nonaktifkan
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
       {/* ═══ FUNNEL ═══ */}
-      {section === 'funnel' && (
-        <>
-          {/* Filter */}
-          <div className="section" style={{ marginBottom: 14 }}>
-            <div className="section-head">
-              <span className="section-title">Filter Funnel</span>
-              <select
-                value={funnelAffiliate}
-                onChange={e => setFunnelAffiliate(e.target.value)}
-                className="filter-select">
-                <option value="all">Semua Affiliate</option>
-                {affiliates.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
-            </div>
-          </div>
-
-          {/* Funnel visual */}
-          <div className="section" style={{ marginBottom: 14 }}>
-            <div className="section-head">
-              <span className="section-title">
-                Funnel Konversi {funnelAffilObj ? `— ${funnelAffilObj.name}` : '(Semua)'}
-              </span>
-            </div>
-            <div style={{ padding: '20px 20px 8px' }}>
-              <div style={{ display: 'flex', alignItems: 'stretch', gap: 8 }}>
-                <FunnelStep
-                  label="Landing View"
-                  count={fLandingViews}
-                  color="#6366f1"
-                />
-                <FunnelStep
-                  label="Order Page"
-                  count={fOrderViews}
-                  pct={fmtPct(fOrderViews, fLandingViews)}
-                  color="#C9A84C"
-                />
-                <FunnelStep
-                  label="Pilih Paket"
-                  count={fPlanSelects}
-                  pct={fmtPct(fPlanSelects, fOrderViews)}
-                  color="#f97316"
-                />
-                <FunnelStep
-                  label="Checkout"
-                  count={fCheckoutStarts}
-                  pct={fmtPct(fCheckoutStarts, fPlanSelects)}
-                  color="#ec4899"
-                />
-                <FunnelStep
-                  label="Bayar ✓"
-                  count={fConversions}
-                  pct={fmtPct(fConversions, fCheckoutStarts)}
-                  color="#22c55e"
-                  isLast
-                />
-              </div>
-
-              {/* Overall conversion rate */}
-              <div style={{
-                marginTop: 20, padding: '14px 16px',
-                background: 'rgba(34,197,94,0.06)',
-                border: '1px solid rgba(34,197,94,0.2)',
-                borderRadius: 10,
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              }}>
-                <span style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: 10, color: 'var(--text3)',
-                  textTransform: 'uppercase', letterSpacing: 1.5,
-                }}>
-                  Overall Conversion Rate (Landing → Bayar)
-                </span>
-                <span style={{
-                  fontFamily: "'Cormorant Garamond', serif",
-                  fontSize: 28, fontWeight: 700,
-                  color: fConversions > 0 ? '#22c55e' : 'var(--text3)',
-                }}>
-                  {fmtPct(fConversions, fLandingViews)}
-                </span>
+      {section === 'funnel' && (() => {
+        const { target, totals, steps, leak, plans, trend, days, perAffiliate } = funnelData;
+        const top = Math.max(steps[0].val, 1);
+        const maxSelect = Math.max(...plans.map(p => p.selects), 1);
+        const rangeLabel = funnelRange === 'all' ? 'sepanjang waktu' : `${funnelRange} hari terakhir`;
+        const hasTrend = trend.some(d => d.visits > 0 || d.buys > 0);
+        return (
+          <>
+            <div className="aff-card" style={{ marginBottom: 14 }}>
+              <div className="aff-toolbar">
+                <select className="aff-select" value={funnelAffiliate} aria-label="Pilih affiliate"
+                  onChange={e => setFunnelAffiliate(e.target.value)}>
+                  <option value="all">Semua affiliate</option>
+                  {affiliates.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+                <div className="aff-seg" role="group" aria-label="Periode">
+                  {([['all', 'Semua'], ['30', '30 hari'], ['7', '7 hari']] as const).map(([id, lbl]) => (
+                    <button key={id} className={funnelRange === id ? 'is-active' : ''}
+                      aria-pressed={funnelRange === id} onClick={() => setFunnelRange(id)}>{lbl}</button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Plan breakdown in funnel */}
-          <div className="section">
-            <div className="section-head">
-              <span className="section-title">Paket yang Dipilih vs Dibeli</span>
+            <div className="aff-stats">
+              <div className="aff-stat">
+                <div className="aff-stat-lbl">Kunjungan</div>
+                <div className="aff-stat-val">{totals.landing.toLocaleString('id-ID')}</div>
+                <div className="aff-stat-sub">{target ? target.name : 'semua partner'}, {rangeLabel}</div>
+              </div>
+              <div className="aff-stat">
+                <div className="aff-stat-lbl">Pilih paket</div>
+                <div className="aff-stat-val">{totals.plan.toLocaleString('id-ID')}</div>
+                <div className="aff-stat-sub">{fmtPct(totals.plan, totals.landing)} dari kunjungan</div>
+              </div>
+              <div className="aff-stat">
+                <div className="aff-stat-lbl">Mulai checkout</div>
+                <div className="aff-stat-val">{totals.checkout.toLocaleString('id-ID')}</div>
+                <div className="aff-stat-sub">{fmtPct(totals.checkout, totals.plan)} dari yang pilih paket</div>
+              </div>
+              <div className="aff-stat">
+                <div className="aff-stat-lbl">Pembelian</div>
+                <div className={`aff-stat-val${totals.paid > 0 ? ' is-gold' : ''}`}>{totals.paid.toLocaleString('id-ID')}</div>
+                <div className="aff-stat-sub">conv. rate {fmtPct(totals.paid, totals.landing)}</div>
+              </div>
             </div>
-            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {fPlanBreakdown.map(p => {
-                const barColor = p.plan === 'elite' ? '#f97316' : p.plan === 'pro' ? '#C9A84C' : '#6366f1';
-                const maxVal = Math.max(...fPlanBreakdown.map(x => x.selects), 1);
-                return (
-                  <div key={p.plan}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                      <span className={`badge ${p.plan === 'elite' ? 'plan-elite' : p.plan === 'pro' ? 'plan-pro' : 'plan-basic'}`}>
-                        {p.plan.toUpperCase()}
-                      </span>
-                      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: 'var(--text2)' }}>
-                        {p.selects} dipilih · {p.conversions} dibeli
-                        {p.selects > 0 && (
-                          <span style={{ color: '#22c55e', marginLeft: 6 }}>
-                            ({fmtPct(p.conversions, p.selects)})
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                    <div style={{ height: 8, background: 'var(--bg4)', borderRadius: 99, overflow: 'hidden' }}>
-                      <div style={{
-                        height: '100%', borderRadius: 99, background: barColor,
-                        width: `${Math.round((p.selects / maxVal) * 100)}%`,
-                        transition: 'width .8s ease',
-                      }} />
-                    </div>
+
+            <div className="aff-two-col">
+              <div className="aff-card">
+                <div className="aff-card-head">
+                  <h3 className="aff-card-title">Funnel konversi</h3>
+                  <p className="aff-card-sub">Berapa sesi pengunjung yang lanjut di tiap tahap.</p>
+                </div>
+                <div className="aff-card-body">
+                  <div className="aff-fchart">
+                    {steps.map((st, i) => {
+                      const isLeak = !!leak && leak.to === st.lbl && leak.lost > 0;
+                      return (
+                        <div key={st.lbl}>
+                          <div className="aff-fchart-top">
+                            <span className="aff-fchart-lbl">{st.lbl}<em>{st.desc}</em></span>
+                            <span className="aff-fchart-num">
+                              <b>{st.val.toLocaleString('id-ID')}</b>
+                              {i > 0 && <span className={isLeak ? 'is-leak' : ''}>{fmtPct(st.val, steps[i - 1].val)} lanjut</span>}
+                            </span>
+                          </div>
+                          <div className="aff-bar aff-bar-lg">
+                            <i className={i === steps.length - 1 ? 'is-win' : ''}
+                              style={{ width: `${Math.round((st.val / top) * 100)}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-          </div>
 
-          {/* Per-affiliate funnel table */}
-          {funnelAffiliate === 'all' && affiliates.length > 0 && (
-            <div className="section" style={{ marginTop: 14 }}>
-              <div className="section-head">
-                <span className="section-title">Perbandingan Funnel per Affiliate</span>
+                  {leak && leak.lost > 0 && (
+                    <div className="aff-callout" style={{ marginTop: 18 }}>
+                      <Warning size={16} weight="fill" />
+                      <span>
+                        Titik bocor terbesar ada di <b>{leak.from} ke {leak.to}</b>:
+                        {' '}{leak.lost} dari {leak.of} sesi tidak lanjut ({Math.round(leak.pct * 100)}%).
+                      </span>
+                    </div>
+                  )}
+                  {totals.orderGap > 0 && (
+                    <div className="aff-callout is-info" style={{ marginTop: 10 }}>
+                      <Info size={16} />
+                      <span>
+                        Event order page tidak tercatat di {totals.orderGap} sesi yang sudah lanjut ke pilih paket atau checkout.
+                        Angka di atas sudah dikoreksi supaya tidak ada tahap yang lebih besar dari tahap sebelumnya.
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="table-wrap">
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
-                  <thead>
-                    <tr>
-                      <TH>Affiliate</TH>
-                      <TH>Landing View</TH>
-                      <TH>Order View</TH>
-                      <TH>Checkout</TH>
-                      <TH>Konversi</TH>
-                      <TH>Conv. Rate</TH>
-                      <TH>Revenue</TH>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...affiliates]
-                      .sort((a, b) => b.conversions - a.conversions)
-                      .map((a, i) => (
-                        <tr key={a.id} style={{ background: i % 2 === 1 ? 'var(--row-alt)' : 'transparent' }}>
-                          <td style={{ padding: '11px 14px', borderBottom: '1px solid var(--border2)', fontWeight: 600, color: 'var(--gold2)', fontSize: 13 }}>
-                            {a.name}
-                            <div style={{ fontSize: 10, color: 'var(--text3)', fontFamily: "'JetBrains Mono',monospace" }}>{a.affiliate_code}</div>
+
+              <div className="aff-card">
+                <div className="aff-card-head">
+                  <h3 className="aff-card-title">Paket yang dipilih dan dibeli</h3>
+                  <p className="aff-card-sub">Satu sesi dihitung sekali per paket.</p>
+                </div>
+                <div className="aff-card-body">
+                  <div className="aff-steps">
+                    {plans.map(p => (
+                      <div key={p.plan}>
+                        <div className="aff-step-top">
+                          <span><b style={{ textTransform: 'capitalize' }}>{p.plan}</b></span>
+                          <span>{p.selects} dipilih, {p.bought} dibeli{p.selects > 0 ? ` (${fmtPct(p.bought, p.selects)})` : ''}</span>
+                        </div>
+                        <div className="aff-bar aff-bar-lg">
+                          <i style={{ width: `${Math.round((p.selects / maxSelect) * 100)}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="aff-card" style={{ marginTop: 14 }}>
+              <div className="aff-card-head">
+                <h3 className="aff-card-title">Kunjungan per hari</h3>
+                <p className="aff-card-sub">
+                  {days} hari terakhir. Garis = sesi pengunjung, titik hijau = hari ada pembelian.
+                </p>
+              </div>
+              <div className="aff-card-body">
+                {hasTrend
+                  ? <TrendChart data={trend} />
+                  : <div className="aff-empty" style={{ padding: '28px 0' }}>Belum ada kunjungan di periode ini.</div>}
+              </div>
+            </div>
+
+            {funnelAffiliate === 'all' && affiliates.length > 0 && (
+              <div className="aff-card" style={{ marginTop: 14 }}>
+                <div className="aff-card-head">
+                  <h3 className="aff-card-title">Perbandingan antar partner</h3>
+                  <p className="aff-card-sub">Diurutkan dari pembelian terbanyak.</p>
+                </div>
+                <div className="aff-table-wrap" style={{ marginTop: 12 }}>
+                  <table className="aff-table" style={{ minWidth: 760 }}>
+                    <thead>
+                      <tr>
+                        <th>Partner</th>
+                        <th className="aff-th-right">Kunjungan</th>
+                        <th className="aff-th-right">Order page</th>
+                        <th className="aff-th-right">Pilih paket</th>
+                        <th className="aff-th-right">Checkout</th>
+                        <th className="aff-th-right">Bayar</th>
+                        <th className="aff-th-right">Conv. rate</th>
+                        <th className="aff-th-right">Penjualan</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {perAffiliate.map(({ a, f, revenue }) => (
+                        <tr key={a.id}>
+                          <td>
+                            <div className="aff-name-btn" style={{ cursor: 'default' }}>{a.name}</div>
+                            <div className="aff-sub aff-mono">{a.affiliate_code}</div>
                           </td>
-                          {[a.landingViews, a.orderViews, a.checkoutStarts, a.conversions].map((v, vi) => {
-                            const colors = ['#6366f1', '#C9A84C', '#f97316', '#22c55e'];
-                            return (
-                              <td key={vi} style={{ padding: '11px 14px', borderBottom: '1px solid var(--border2)', textAlign: 'right' }}>
-                                <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, color: v > 0 ? colors[vi] : 'var(--text3)' }}>
-                                  {v}
-                                </span>
-                              </td>
-                            );
-                          })}
-                          <td style={{ padding: '11px 14px', borderBottom: '1px solid var(--border2)', textAlign: 'right' }}>
-                            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: a.conversions > 0 ? '#22c55e' : 'var(--text3)' }}>
-                              {fmtPct(a.conversions, a.landingViews)}
-                            </span>
+                          {[f.landing, f.order, f.plan, f.checkout].map((v, vi) => (
+                            <td key={vi} className="aff-td-right">
+                              <span className={`aff-fn-val${v === 0 ? ' is-zero' : ''}`}>{v}</span>
+                            </td>
+                          ))}
+                          <td className="aff-td-right">
+                            <span className={`aff-fn-val${f.paid === 0 ? ' is-zero' : ' is-win'}`}>{f.paid}</span>
                           </td>
-                          <td style={{ padding: '11px 14px', borderBottom: '1px solid var(--border2)', textAlign: 'right' }}>
-                            <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18, fontWeight: 700, color: 'var(--gold2)' }}>
-                              {a.totalRevenue > 0 ? fmtRp(a.totalRevenue) : '—'}
-                            </span>
+                          <td className="aff-td-right">
+                            <span className={`aff-rate${f.paid > 0 ? ' is-win' : ''}`}>{fmtPct(f.paid, f.landing)}</span>
+                          </td>
+                          <td className="aff-td-right">
+                            <span className={`aff-money${revenue > 0 ? ' is-gold' : ''}`}>{revenue > 0 ? fmtRp(revenue) : '—'}</span>
                           </td>
                         </tr>
                       ))}
-                  </tbody>
-                </table>
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          )}
-        </>
-      )}
+            )}
+          </>
+        );
+      })()}
 
       {/* ═══ REFERRAL LOG ═══ */}
       {section === 'referrals' && (
@@ -775,6 +1366,10 @@ export default function AffiliatePanel({ active }: { active: boolean }) {
                 <option value="pending">Pending</option>
                 <option value="paid">Paid</option>
               </select>
+              <button className="aff-btn aff-btn-sm" onClick={exportReferralsCsv}
+                disabled={filteredReferrals.length === 0}>
+                <DownloadSimple size={14} />Export CSV
+              </button>
             </div>
           </div>
           {filteredReferrals.length === 0 ? (
@@ -804,7 +1399,7 @@ export default function AffiliatePanel({ active }: { active: boolean }) {
                           <div className="email-text">{r.buyer_email}</div>
                         </td>
                         <td style={{ padding: '11px 14px', borderBottom: '1px solid var(--border2)' }}>
-                          <span className={`badge ${r.plan_type === 'elite' ? 'plan-elite' : r.plan_type === 'pro' ? 'plan-pro' : 'plan-basic'}`}>
+                          <span className={`badge ${r.plan_type === 'elite' ? 'plan-elite' : r.plan_type === 'pro' ? 'plan-pro': 'plan-basic'}`}>
                             {r.plan_type.toUpperCase()}
                           </span>
                         </td>
@@ -897,7 +1492,7 @@ export default function AffiliatePanel({ active }: { active: boolean }) {
                       const barColor = p.plan === 'elite' ? '#F97316' : p.plan === 'pro' ? 'var(--gold)' : 'var(--blue)';
                       return (
                         <div key={p.plan}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, alignItems: 'center' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, alignItems: 'center'}}>
                             <span className={`badge ${p.plan === 'elite' ? 'plan-elite' : p.plan === 'pro' ? 'plan-pro' : 'plan-basic'}`}>
                               {p.plan.toUpperCase()}
                             </span>
@@ -906,7 +1501,7 @@ export default function AffiliatePanel({ active }: { active: boolean }) {
                             </span>
                           </div>
                           <div style={{ height: 7, background: 'var(--bg4)', borderRadius: 99, overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${pct}%`, borderRadius: 99, background: barColor, transition: 'width .8s ease' }} />
+                            <div style={{ height: '100%', width: `${pct}%`, borderRadius: 99, background: barColor, transition:'width .8s ease' }} />
                           </div>
                           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3, fontFamily: "'JetBrains Mono',monospace" }}>
                             {pct}% dari total
@@ -994,7 +1589,7 @@ export default function AffiliatePanel({ active }: { active: boolean }) {
                         return (
                           <tr key={r.id} style={{ background: i % 2 === 1 ? 'var(--row-alt)' : 'transparent' }}>
                             <td className="date-text" style={{ padding: '11px 14px', borderBottom: '1px solid var(--border2)', whiteSpace: 'nowrap' }}>{fmtDate(r.created_at)}</td>
-                            <td style={{ padding: '11px 14px', borderBottom: '1px solid var(--border2)', color: 'var(--gold2)', fontWeight: 600, fontSize: 13 }}>{aff?.name ?? '—'}</td>
+                            <td style={{ padding: '11px 14px', borderBottom: '1px solid var(--border2)', color: 'var(--gold2)',fontWeight: 600, fontSize: 13 }}>{aff?.name ?? '—'}</td>
                             <td style={{ padding: '11px 14px', borderBottom: '1px solid var(--border2)' }}>
                               <div style={{ fontSize: 13, color: 'var(--text)' }}>{r.buyer_name || '—'}</div>
                               <div className="email-text">{r.buyer_email}</div>
@@ -1074,7 +1669,7 @@ export default function AffiliatePanel({ active }: { active: boolean }) {
                 </div>
                 <div className="gen-field" style={{ width: '100%' }}>
                   <label>Kode Affiliate * (uppercase, maks 12 karakter)</label>
-                  <input style={{ ...iStyle, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 3, color: 'var(--gold2)', fontSize: 14 }}
+                  <input style={{ ...iStyle, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 3, color: 'var(--gold2)',fontSize: 14 }}
                     value={form.affiliate_code} placeholder="ILHAM10" maxLength={12}
                     onChange={e => setForm(f => ({
                       ...f,
@@ -1111,7 +1706,7 @@ export default function AffiliatePanel({ active }: { active: boolean }) {
                     style={{ width: 40, height: 22, borderRadius: 11, background: form.is_active ? 'var(--gold)' : 'var(--bg4)', border: '1px solid var(--border)', cursor: 'pointer', position: 'relative', transition: 'background .2s' }}>
                     <span style={{ position: 'absolute', top: 3, left: form.is_active ? 20 : 4, width: 14, height: 14, borderRadius: '50%', background: '#fff', transition: 'left .2s' }} />
                   </button>
-                  <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono',monospace", color: form.is_active ? 'var(--gold2)' : 'var(--text3)' }}>
+                  <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono',monospace", color: form.is_active ? 'var(--gold2)': 'var(--text3)' }}>
                     {form.is_active ? 'Aktif' : 'Nonaktif'}
                   </span>
                 </div>

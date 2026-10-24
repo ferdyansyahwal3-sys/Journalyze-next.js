@@ -38,11 +38,11 @@ interface Ref {
 
 type Preset = '7' | '14' | '30' | '90' | 'custom';
 type Mode = 'all' | 'main' | 'affiliate';
-type SourceKind = 'Affiliate' | 'Kampanye (UTM)' | 'Referral' | 'Langsung';
+type SourceGroup = 'Affiliate' | 'Web utama' | 'Sosial media' | 'Kampanye lain' | 'Situs lain';
 
 interface SourceRow {
   label: string;
-  kind: SourceKind;
+  group: SourceGroup;
   views: number;
   clicks: number;
   viewSessions: Set<string>;
@@ -61,10 +61,10 @@ const QUICK_LINKS = [
   { label: 'YouTube',   url: `${SITE_URL}/?utm_source=youtube&utm_medium=desc` },
 ];
 
-const MODES: { id: Mode; label: string; hint: string }[] = [
-  { id: 'all',       label: 'Gabungan', hint: 'Semua pengunjung dan order, termasuk dari link affiliate.' },
-  { id: 'main',      label: 'LP Utama', hint: 'Hanya pengunjung dan order tanpa kode affiliate.' },
-  { id: 'affiliate', label: 'Affiliate', hint: 'Hanya pengunjung dan order dari link affiliate.' },
+const MODES: { id: Mode; label: string }[] = [
+  { id: 'all',       label: 'Gabungan' },
+  { id: 'main',      label: 'LP Utama' },
+  { id: 'affiliate', label: 'Affiliate' },
 ];
 
 const nf = (n: number) => n.toLocaleString('id-ID');
@@ -106,18 +106,44 @@ function errMsg(e: unknown): string {
   return String(e);
 }
 
-function sourceOf(e: LandingEvent): { label: string; kind: SourceKind } {
-  if (e.affiliate_code) return { label: e.affiliate_code, kind: 'Affiliate' };
-  if (e.utm_source) {
-    return { label: e.utm_medium ? `${e.utm_source} / ${e.utm_medium}` : e.utm_source, kind: 'Kampanye (UTM)' };
+// Kunjungan dari localhost / Vercel = tes developer, tidak dihitung
+const DEV_HOST_RE = /(^|\.)(localhost|127\.0\.0\.1|vercel\.com|vercel\.app)$/;
+
+function hostOf(referrer: string | null): string {
+  if (!referrer) return '';
+  try {
+    return new URL(referrer).hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return '';
   }
-  if (e.referrer) {
-    try {
-      const host = new URL(e.referrer).hostname.replace(/^www\./, '');
-      if (host && !host.includes('journalyze')) return { label: host, kind: 'Referral' };
-    } catch { /* referrer tidak valid → dianggap langsung */ }
+}
+
+/** Samakan berbagai ejaan (ig / instagram / l.instagram.com) jadi satu platform */
+function platformOf(s: string): string | null {
+  if (s === 'ig' || s.includes('instagram')) return 'Instagram';
+  if (s === 'tt' || s.includes('tiktok')) return 'TikTok';
+  if (s === 'fb' || s.includes('facebook') || s.includes('fb.com') || s.includes('fb.me') || s.includes('messenger')) return 'Facebook';
+  if (s === 'yt' || s.includes('youtube') || s.includes('youtu.be')) return 'YouTube';
+  if (s === 'wa' || s.includes('whatsapp') || s.includes('wa.me')) return 'WhatsApp';
+  return null;
+}
+
+function sourceOf(e: LandingEvent): { label: string; group: SourceGroup } {
+  // 1) Kode affiliate selalu menang, satu baris per kode
+  if (e.affiliate_code) return { label: e.affiliate_code, group: 'Affiliate' };
+
+  // 2) UTM dari link kampanye
+  const utm = (e.utm_source ?? '').trim().toLowerCase();
+  if (utm) {
+    const p = platformOf(utm);
+    return p ? { label: p, group: 'Sosial media' } : { label: utm, group: 'Kampanye lain' };
   }
-  return { label: 'Langsung / organik', kind: 'Langsung' };
+
+  // 3) Situs asal pengunjung (referrer)
+  const host = hostOf(e.referrer);
+  if (!host || host.includes('journalyze')) return { label: 'Organik', group: 'Web utama' };
+  const p = platformOf(host);
+  return p ? { label: p, group: 'Sosial media' } : { label: 'Lainnya', group: 'Situs lain' };
 }
 
 async function fetchEvents(fromIso: string, toIso: string): Promise<LandingEvent[]> {
@@ -228,7 +254,10 @@ export default function DashboardPanel({ active }: { active: boolean }) {
 
   // ── Filter Gabungan / LP Utama / Affiliate ──
   const filteredEvents = useMemo(
-    () => events.filter((e) => (mode === 'all' ? true : mode === 'main' ? !e.affiliate_code : !!e.affiliate_code)),
+    () =>
+      events
+        .filter((e) => !DEV_HOST_RE.test(hostOf(e.referrer))) // buang kunjungan tes (localhost / Vercel)
+        .filter((e) => (mode === 'all' ? true : mode === 'main' ? !e.affiliate_code : !!e.affiliate_code)),
     [events, mode]
   );
   const filteredTxs = useMemo(
@@ -253,10 +282,10 @@ export default function DashboardPanel({ active }: { active: boolean }) {
     filteredEvents.forEach((e) => {
       const key = dayKey(e.created_at);
       const sid = e.session_id || e.created_at;
-      const { label, kind } = sourceOf(e);
-      const sKey = `${kind}:${label}`;
+      const { label, group } = sourceOf(e);
+      const sKey = `${group}:${label}`;
       if (!sources.has(sKey)) {
-        sources.set(sKey, { label, kind, views: 0, clicks: 0, viewSessions: new Set(), clickSessions: new Set() });
+        sources.set(sKey, { label, group, views: 0, clicks: 0, viewSessions: new Set(), clickSessions: new Set() });
       }
       const src = sources.get(sKey)!;
 
@@ -284,7 +313,7 @@ export default function DashboardPanel({ active }: { active: boolean }) {
       .sort((a, b) => b.viewSessions.size - a.viewSessions.size || b.clicks - a.clicks);
 
     const series = days.map((d) => ({ day: d, ...perDay[d] }));
-    const peak = Math.max(...series.map((s) => Math.max(s.views, s.clicks)), 5);
+    const peak = Math.max(...series.map((s) => s.views + s.clicks), 5);
     const step = niceStep(peak / 5);
 
     return { series, views, clicks, visitors, ctr, sourceList, plans, devices, step, top: step * 5 };
@@ -317,7 +346,6 @@ export default function DashboardPanel({ active }: { active: boolean }) {
   const tickEvery = Math.max(1, Math.ceil(data.series.length / 10));
   const planMax = Math.max(...Object.values(data.plans), 1);
   const deviceTotal = data.devices.mobile + data.devices.desktop;
-  const modeHint = MODES.find((m) => m.id === mode)?.hint ?? '';
 
   return (
     <div className="main lp-dash">
@@ -350,7 +378,7 @@ export default function DashboardPanel({ active }: { active: boolean }) {
 
       {/* Baris atas */}
       <div className="lp-top">
-        <div className="lp-card">
+        <div className="lp-card lp-left">
           <div className="lp-card-title">
             Landing Page Utama
             <span className="lp-live">Tracking aktif</span>
@@ -365,9 +393,12 @@ export default function DashboardPanel({ active }: { active: boolean }) {
               </div>
               <a className="lp-site-url" href={SITE_URL} target="_blank" rel="noopener noreferrer">{SITE_URL}</a>
             </div>
-            <button className="lp-chip" onClick={() => copy(SITE_URL)} aria-label="Salin link landing page">
-              Salin link
-            </button>
+            <div className="lp-site-actions">
+              <a className="lp-chip" href={SITE_URL} target="_blank" rel="noopener noreferrer">Buka</a>
+              <button className="lp-chip" onClick={() => copy(SITE_URL)} aria-label="Salin link landing page">
+                Salin link
+              </button>
+            </div>
           </div>
 
           <div className="lp-quick-label">Salin link kampanye</div>
@@ -377,23 +408,22 @@ export default function DashboardPanel({ active }: { active: boolean }) {
                 {q.label}
               </button>
             ))}
-          </div>
-
-          <div className="lp-filter">
-            <div className="lp-quick-label">Tampilkan data dari</div>
-            <div className="lp-seg" role="group" aria-label="Filter sumber data">
-              {MODES.map((m) => (
-                <button
-                  key={m.id}
-                  className={`lp-seg-btn${mode === m.id ? ' active' : ''}`}
-                  aria-pressed={mode === m.id}
-                  onClick={() => setMode(m.id)}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-            <div className="lp-filter-hint">{modeHint}</div>
+            <span className="lp-quick-sep" aria-hidden="true" />
+            <label className="lp-chip lp-select">
+              <span>Tampilkan:</span>
+              <select
+                value={mode}
+                onChange={(e) => setMode(e.target.value as Mode)}
+                aria-label="Tampilkan data dari"
+              >
+                {MODES.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </label>
           </div>
         </div>
 
@@ -481,14 +511,6 @@ export default function DashboardPanel({ active }: { active: boolean }) {
             <div className="lp-legend-lbl"><span className="lp-dot clicks" />Clicks</div>
             <div className="lp-legend-val">{nf(data.clicks)}</div>
           </div>
-          <div className="lp-legend-item">
-            <div className="lp-legend-lbl"><span className="lp-dot none" />Pengunjung unik</div>
-            <div className="lp-legend-val">{nf(data.visitors)}</div>
-          </div>
-          <div className="lp-legend-item">
-            <div className="lp-legend-lbl"><span className="lp-dot none" />Rasio klik</div>
-            <div className="lp-legend-val">{data.ctr.toFixed(1)}%</div>
-          </div>
         </div>
 
         {loadingEvents && !events.length ? (
@@ -505,13 +527,25 @@ export default function DashboardPanel({ active }: { active: boolean }) {
                 {data.series.map((s) => (
                   <div className="lp-col" key={s.day}>
                     <div className="lp-pair">
-                      <div className="lp-bar views" style={{ height: `${(s.views / data.top) * 100}%`, minHeight: s.views > 0 ? 3 : 0 }} />
-                      <div className="lp-bar clicks" style={{ height: `${(s.clicks / data.top) * 100}%`, minHeight: s.clicks > 0 ? 3 : 0 }} />
-                    </div>
-                    <div className="lp-tip">
-                      <b>{fmtDayShort(s.day)}</b><br />
-                      <span className="tv">Views {nf(s.views)}</span><br />
-                      <span className="tc">Clicks {nf(s.clicks)}</span>
+                      <div
+                        className="lp-stack"
+                        style={{ height: `${((s.views + s.clicks) / data.top) * 100}%`, minHeight: s.views + s.clicks > 0 ? 8 : 0 }}
+                      >
+                        {s.views > 0 && <div className="lp-stack-views" />}
+                        {s.clicks > 0 && (
+                          <div
+                            className="lp-stack-clicks"
+                            style={{ height: `${(s.clicks / (s.views + s.clicks)) * 100}%`, minHeight: 6 }}
+                          />
+                        )}
+                        {s.views + s.clicks > 0 && (
+                          <div className="lp-tip">
+                            <b>{fmtDayShort(s.day)}</b>
+                            <span><i className="sq v" />Views: {nf(s.views)}</span>
+                            <span><i className="sq c" />Clicks: {nf(s.clicks)}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -565,7 +599,8 @@ export default function DashboardPanel({ active }: { active: boolean }) {
           {data.sourceList.length === 0 ? (
             <div className="empty-state" style={{ padding: '28px 0', fontSize: 12 }}>Belum ada data</div>
           ) : (
-            <div className="table-wrap">
+            <>
+            <div className="table-wrap lp-src-scroll">
               <table>
                 <thead>
                   <tr>
@@ -576,14 +611,14 @@ export default function DashboardPanel({ active }: { active: boolean }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.sourceList.slice(0, 10).map((s) => {
+                  {data.sourceList.map((s) => {
                     const rate = s.viewSessions.size ? Math.min(100, (s.clickSessions.size / s.viewSessions.size) * 100) : 0;
                     return (
-                      <tr key={`${s.kind}:${s.label}`}>
+                      <tr key={`${s.group}:${s.label}`}>
                         <td data-label="Sumber">
                           <div>
                             <div className="lp-src-name">{s.label}</div>
-                            <div className="lp-src-kind">{s.kind}</div>
+                            <div className="lp-src-kind">{s.group}</div>
                           </div>
                         </td>
                         <td data-label="Pengunjung"><span className="lp-num">{nf(s.viewSessions.size)}</span></td>
@@ -595,6 +630,12 @@ export default function DashboardPanel({ active }: { active: boolean }) {
                 </tbody>
               </table>
             </div>
+            {data.sourceList.length > 5 && (
+              <div className="lp-src-more">
+                5 dari {nf(data.sourceList.length)} sumber tampil · scroll tabel untuk melihat sisanya
+              </div>
+            )}
+            </>
           )}
         </div>
 

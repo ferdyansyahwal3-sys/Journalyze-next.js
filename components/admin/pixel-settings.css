@@ -1,0 +1,330 @@
+/* ══════════════════════════════════════════════════════
+   JOURNALYZE — ADMIN › PIXEL › PENGATURAN PIXEL
+   Scope: .admin-root .ps-wrap — tidak bocor ke halaman lain.
+   Pakai CSS variables dari admin.css; meminjam .lp-* (head, top, hero, card, live)
+   dari dashboard.css. Semua class milik halaman ini berawalan ps-.
+══════════════════════════════════════════════════════ */
+
+.admin-root .ps-wrap { display: block; }
+.admin-root .ps-wrap code {
+  font-family: var(--font-jetbrains, 'JetBrains Mono', monospace);
+  font-size: 11px; color: var(--gold2);
+  background: var(--gold-bg); border: 1px solid var(--gold-bd);
+  border-radius: 5px; padding: 1px 6px;
+}
+.admin-root .ps-wrap button:disabled { cursor: not-allowed; }
+
+/* ── Header: tombol refresh ── */
+.admin-root .ps-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ── Pesan simpan ── */
+.admin-root .ps-msg {
+  border-radius: 12px; padding: 12px 18px; font-size: 13px; line-height: 1.6;
+  margin-bottom: 16px; border: 1px solid;
+}
+.admin-root .ps-msg.ok  { background: var(--green-bg); border-color: var(--green-bd); color: var(--green); }
+.admin-root .ps-msg.err { background: var(--red-bg);   border-color: var(--red-bd);   color: var(--red); }
+
+/* ── Ringkasan (kartu kiri atas) ── */
+.admin-root .ps-wrap .lp-left { display: flex; flex-direction: column; }
+.admin-root .ps-stats {
+  flex: 1; display: grid; gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+.admin-root .ps-stat {
+  background: var(--bg3); border: 1px solid var(--border2);
+  border-radius: 12px; padding: 16px 18px; min-width: 0;
+  display: flex; flex-direction: column; justify-content: space-between; gap: 10px;
+}
+.admin-root .ps-stat-lbl {
+  font-family: var(--font-jetbrains, 'JetBrains Mono', monospace);
+  font-size: 8.5px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--text3);
+}
+.admin-root .ps-stat-val {
+  font-family: var(--font-cormorant, 'Cormorant Garamond', serif);
+  font-size: 32px; font-weight: 700; line-height: 1.1; color: var(--text);
+  font-variant-numeric: lining-nums; word-break: break-word;
+}
+.admin-root .ps-stat-val.gold  { color: var(--gold2); }
+.admin-root .ps-stat-val.green { color: var(--green); }
+
+/* ── Hero status ── */
+.admin-root .ps-hero-val.on  { color: var(--green); }
+.admin-root .ps-hero-val.off { color: var(--text3); }
+.admin-root .ps-wrap .lp-hero-val.money { font-size: 44px; }
+.admin-root .ps-hero-names { max-width: 60%; text-align: right; word-break: break-word; }
+
+/* ── Kartu section ── */
+.admin-root .ps-section { margin-bottom: 16px; }
+.admin-root .ps-sec-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.admin-root .ps-sec-title {
+  font-family: var(--font-cormorant, 'Cormorant Garamond', serif);
+  font-size: 22px; font-weight: 700; color: var(--text2);
+  display: flex; align-items: center; gap: 10px;
+}
+.admin-root .ps-sec-sub { font-size: 12px; color: var(--text3); margin-top: 2px; font-weight: 400;
+  font-family: var(--font-outfit, 'Outfit', sans-serif); }
+.admin-root .ps-sec-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ── Lencana & chip ── */
+.admin-root .ps-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-jetbrains, 'JetBrains Mono', monospace);
+  font-size: 10px; letter-spacing: .4px; line-height: 1.4;
+  border: 1px solid var(--border); border-radius: 99px; padding: 4px 10px;
+  color: var(--text3); background: var(--bg3);
+}
+.admin-root .ps-badge.ok   { color: var(--green); background: var(--green-bg); border-color: var(--green-bd); }
+.admin-root .ps-badge.warn { color: var(--gold2); background: var(--gold-bg);  border-color: var(--gold-bd2); }
+.admin-root .ps-badge.blue { color: var(--blue);  background: var(--blue-bg);  border-color: var(--blue-bd); }
+.admin-root .ps-tag {
+  font-family: var(--font-jetbrains, 'JetBrains Mono', monospace);
+  font-size: 9px; letter-spacing: 1px; text-transform: uppercase; font-weight: 400;
+  color: var(--text3); border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px;
+}
+.admin-root .ps-chip {
+  display: inline-block; font-family: var(--font-jetbrains, 'JetBrains Mono', monospace);
+  font-size: 10.5px; color: var(--text2); background: var(--bg3);
+  border: 1px solid var(--border2); border-radius: 7px; padding: 2px 8px; margin: 0 4px 4px 0;
+}
+
+/* ── Pill ON/OFF ── */
+.admin-root .ps-pill {
+  border-radius: 99px; padding: 5px 14px; min-width: 72px;
+  font-family: var(--font-jetbrains, 'JetBrains Mono', monospace);
+  font-size: 11px; font-weight: 700; letter-spacing: 1px; cursor: pointer;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--border); color: var(--text3);
+  transition: all .2s;
+}
+.admin-root .ps-pill.on { background: var(--green-bg); border-color: var(--green-bd); color: var(--green); }
+
+/* ── Tombol aksi kecil ── */
+.admin-root .ps-btn {
+  background: var(--bg3); border: 1px solid var(--border); color: var(--text2);
+  border-radius: 9px; padding: 7px 12px; cursor: pointer; white-space: nowrap;
+  font-family: var(--font-outfit, 'Outfit', sans-serif); font-size: 12px; font-weight: 600;
+  transition: all .2s;
+}
+.admin-root .ps-btn:hover:not(:disabled) { border-color: var(--gold-bd2); color: var(--gold2); }
+.admin-root .ps-btn.danger:hover:not(:disabled) { border-color: var(--red-bd); color: var(--red); }
+.admin-root .ps-btn:disabled { opacity: .5; }
+.admin-root .ps-btn-gold {
+  background: var(--gold-bg); border: 1px solid var(--gold-bd2); color: var(--gold2);
+  border-radius: 9px; padding: 8px 16px; cursor: pointer; white-space: nowrap;
+  font-family: var(--font-outfit, 'Outfit', sans-serif); font-size: 12px; font-weight: 700;
+  transition: all .2s;
+}
+.admin-root .ps-btn-gold:hover:not(:disabled) { border-color: var(--gold); }
+.admin-root .ps-btn-gold:disabled { opacity: .5; }
+
+/* ── Daftar analitik (kartu per pixel) ── */
+.admin-root .ps-pixels { display: flex; flex-direction: column; gap: 12px; }
+.admin-root .ps-px {
+  display: grid; gap: 14px; align-items: center;
+  grid-template-columns: minmax(180px, 1.1fr) minmax(220px, 1.6fr) auto;
+  background: var(--bg3); border: 1px solid var(--border2);
+  border-radius: 14px; padding: 16px 18px;
+}
+.admin-root .ps-px.off { opacity: .6; }
+.admin-root .ps-px-name {
+  font-family: var(--font-cormorant, 'Cormorant Garamond', serif);
+  font-size: 22px; font-weight: 700; color: var(--text);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.admin-root .ps-px-id {
+  font-family: var(--font-jetbrains, 'JetBrains Mono', monospace);
+  font-size: 13px; letter-spacing: 1px; color: var(--gold2); margin-top: 4px; word-break: break-all;
+}
+.admin-root .ps-px-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.admin-root .ps-px-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* ── Hasil tes ── */
+.admin-root .ps-result {
+  margin-top: 14px; padding: 12px 16px; border-radius: 12px; border: 1px solid;
+  font-size: 12px; line-height: 1.7;
+}
+.admin-root .ps-result.ok  { background: var(--green-bg); border-color: var(--green-bd); color: var(--green); }
+.admin-root .ps-result.err { background: var(--red-bg);   border-color: var(--red-bd);   color: var(--red); }
+.admin-root .ps-result div { margin-top: 4px; word-break: break-word; }
+
+/* ── Bagian bisa dibuka-tutup (script & cara kerja) ── */
+.admin-root .ps-details {
+  margin-top: 14px; background: var(--bg3); border: 1px solid var(--border2); border-radius: 12px;
+}
+.admin-root .ps-details summary {
+  cursor: pointer; list-style: none; padding: 12px 16px;
+  font-family: var(--font-jetbrains, 'JetBrains Mono', monospace);
+  font-size: 10px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--gold2);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.admin-root .ps-details summary::-webkit-details-marker { display: none; }
+.admin-root .ps-details summary::after { content: '▸'; transition: transform .2s; }
+.admin-root .ps-details[open] summary::after { transform: rotate(90deg); }
+.admin-root .ps-details-body { padding: 0 16px 16px; }
+.admin-root .ps-pre {
+  margin: 0; font-family: var(--font-jetbrains, 'JetBrains Mono', monospace);
+  font-size: 11px; line-height: 1.7; white-space: pre-wrap; word-break: break-all;
+  background: var(--bg2); border: 1px solid var(--border2); border-radius: 10px; padding: 14px 16px;
+}
+.admin-root .ps-info { font-size: 12px; line-height: 1.8; color: var(--text2); }
+.admin-root .ps-info p { margin: 0 0 8px; }
+.admin-root .ps-info p:last-child { margin-bottom: 0; }
+
+/* ── Alert ── */
+.admin-root .ps-alert {
+  padding: 10px 14px; border-radius: 10px; font-size: 12px; line-height: 1.6;
+  background: var(--red-bg); border: 1px solid var(--red-bd); color: var(--red); margin-bottom: 14px;
+}
+
+/* ── Form (aturan & modal) ── */
+.admin-root .ps-label {
+  display: block; margin-bottom: 6px;
+  font-family: var(--font-jetbrains, 'JetBrains Mono', monospace);
+  font-size: 10px; letter-spacing: .8px; color: var(--text3);
+}
+.admin-root .ps-input {
+  width: 100%; font-size: 13px; padding: 10px 12px; outline: none;
+  background: var(--input-bg, rgba(255,255,255,0.03)); border: 1px solid var(--border);
+  border-radius: 9px; color: var(--text);
+  font-family: var(--font-jetbrains, 'JetBrains Mono', monospace);
+}
+.admin-root .ps-input:focus { border-color: var(--gold); }
+.admin-root select.ps-input { cursor: pointer; }
+.admin-root select.ps-input option { background: var(--bg3); color: var(--text); }
+.admin-root .ps-hint { font-size: 11px; color: var(--text3); margin-top: 6px; line-height: 1.5; }
+.admin-root .ps-hint.err { color: var(--red); }
+.admin-root .ps-form {
+  margin-bottom: 16px; padding: 18px 20px;
+  background: var(--bg3); border: 1px solid var(--gold-bd); border-radius: 14px;
+}
+.admin-root .ps-form-title {
+  font-family: var(--font-jetbrains, 'JetBrains Mono', monospace);
+  font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--gold2);
+  margin-bottom: 14px;
+}
+.admin-root .ps-form-grid {
+  display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.admin-root .ps-gap-top { margin-top: 8px; }
+.admin-root .ps-inline { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.admin-root .ps-inline .ps-input { width: 90px; }
+.admin-root .ps-inline span { font-size: 12px; color: var(--text3); }
+.admin-root .ps-checks {
+  display: flex; flex-direction: column; gap: 8px; max-height: 130px; overflow-y: auto;
+  background: var(--input-bg, rgba(255,255,255,0.03)); border: 1px solid var(--border);
+  border-radius: 9px; padding: 10px 12px;
+}
+.admin-root .ps-checks label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; color: var(--text); }
+.admin-root .ps-checks small { color: var(--text3); font-size: 10px; }
+.admin-root .ps-form-error {
+  margin-top: 14px; padding: 10px 14px; border-radius: 9px; font-size: 12px;
+  background: var(--red-bg); border: 1px solid var(--red-bd); color: var(--red);
+}
+.admin-root .ps-form-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+
+/* ── Dropdown halaman (PagePicker) ── */
+.admin-root .ps-pp { position: relative; }
+.admin-root .ps-pp-btn {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  text-align: left; cursor: pointer;
+}
+.admin-root .ps-pp-btn.empty { color: var(--text3); }
+.admin-root .ps-pp-sum { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-root .ps-pp-caret { font-size: 10px; }
+.admin-root .ps-pp-backdrop { position: fixed; inset: 0; z-index: 40; }
+.admin-root .ps-pp-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 41;
+  background: var(--bg2); border: 1px solid var(--border2); border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden;
+}
+.admin-root .ps-pp-list { max-height: 260px; overflow-y: auto; }
+.admin-root .ps-pp-row {
+  display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; cursor: pointer;
+  font-size: 12px; font-family: var(--font-jetbrains, 'JetBrains Mono', monospace); color: var(--text);
+}
+.admin-root .ps-pp-row.sep { border-bottom: 1px solid var(--border2); }
+.admin-root .ps-pp-row.dim { opacity: .4; }
+.admin-root .ps-pp-row small { display: block; font-size: 10px; color: var(--text3); }
+.admin-root .ps-pp-foot { padding: 10px 12px; border-top: 1px solid var(--border2); }
+.admin-root .ps-pp-foot-row { display: flex; gap: 8px; }
+.admin-root .ps-pp-foot .ps-input { padding: 8px 10px; font-size: 12px; }
+
+/* ── Tabel (aturan & event log) ── */
+.admin-root .ps-table-wrap { overflow-x: auto; }
+.admin-root .ps-table { width: 100%; border-collapse: collapse; min-width: 880px; }
+.admin-root .ps-table th {
+  text-align: left; padding: 10px 12px; white-space: nowrap;
+  font-family: var(--font-jetbrains, 'JetBrains Mono', monospace);
+  font-size: 9px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text3);
+  border-bottom: 1px solid var(--border);
+}
+.admin-root .ps-table td {
+  padding: 14px 12px; font-size: 13px; color: var(--text2); vertical-align: top;
+  border-bottom: 1px solid var(--border2);
+}
+.admin-root .ps-table tbody tr:last-child td { border-bottom: none; }
+.admin-root .ps-table tr.off td { opacity: .55; }
+.admin-root .ps-event-name {
+  font-family: var(--font-jetbrains, 'JetBrains Mono', monospace);
+  font-size: 13px; font-weight: 700; color: var(--gold2);
+}
+.admin-root .ps-mono { font-family: var(--font-jetbrains, 'JetBrains Mono', monospace); font-size: 11px; }
+.admin-root .ps-muted { color: var(--text3); font-size: 11px; margin-top: 3px; }
+.admin-root .ps-row-actions { display: flex; gap: 8px; }
+.admin-root .ps-empty { padding: 32px 12px; text-align: center; color: var(--text3); font-size: 13px; line-height: 1.7; }
+
+/* ── Uji coba ── */
+.admin-root .ps-test-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.admin-root .ps-test-pick { min-width: 260px; flex: 1; max-width: 420px; }
+.admin-root .ps-test-note { font-size: 12px; color: var(--text3); line-height: 1.8; margin: 14px 0 0; }
+.admin-root .ps-test-note strong { color: var(--text2); }
+
+/* ── Kartu arahan ke Analitik Meta ── */
+.admin-root .ps-cta {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  background: linear-gradient(145deg, rgba(201,168,76,0.12), rgba(201,168,76,0.03) 60%, var(--bg2));
+  border-color: var(--gold-bd);
+}
+.admin-root .ps-cta p { margin: 4px 0 0; font-size: 12px; color: var(--text3); }
+
+/* ── Modal analitik ── */
+.admin-root .ps-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+  display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 1000;
+}
+.admin-root .ps-dialog {
+  width: min(520px, 100%); max-height: calc(100vh - 32px); overflow-y: auto;
+  background: var(--bg2); border: 1px solid var(--gold-bd2); border-radius: 18px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6); padding: 24px;
+}
+.admin-root .ps-dialog-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+.admin-root .ps-dialog-title {
+  font-family: var(--font-cormorant, 'Cormorant Garamond', serif);
+  font-size: 24px; font-weight: 700; color: var(--text);
+}
+.admin-root .ps-close {
+  background: transparent; border: none; color: var(--text3); font-size: 18px; cursor: pointer;
+  width: 32px; height: 32px; border-radius: 8px;
+}
+.admin-root .ps-close:hover:not(:disabled) { color: var(--red); background: var(--red-bg); }
+.admin-root .ps-field { margin-bottom: 14px; }
+.admin-root .ps-req { color: var(--red); }
+.admin-root .ps-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+@media (max-width: 1023px) {
+  .admin-root .ps-px { grid-template-columns: 1fr; }
+  .admin-root .ps-px-actions { justify-content: flex-start; }
+}
+@media (max-width: 720px) {
+  .admin-root .ps-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; }
+  .admin-root .ps-stat-val { font-size: 26px; }
+  .admin-root .ps-hero-names { max-width: 100%; text-align: left; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-root .ps-pill, .admin-root .ps-btn, .admin-root .ps-btn-gold,
+  .admin-root .ps-details summary::after { transition: none; }
+}

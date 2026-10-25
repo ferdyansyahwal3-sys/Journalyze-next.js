@@ -95,6 +95,16 @@ function fmtDayShort(key: string): string {
   });
 }
 
+function fmtRangeShort(from: string, to: string): string {
+  const thisYear = dayKey(Date.now()).slice(0, 4);
+  const withYear = from.slice(0, 4) !== to.slice(0, 4) || from.slice(0, 4) !== thisYear;
+  const f = (k: string) =>
+    new Date(k + 'T12:00:00Z').toLocaleDateString('id-ID', {
+      day: 'numeric', month: 'short', ...(withYear ? { year: 'numeric' as const } : {}), timeZone: 'UTC',
+    });
+  return `${f(from)} – ${f(to)}`;
+}
+
 const dayNum = (key: string) => String(Number(key.slice(8, 10)));
 const monthShort = (key: string) =>
   new Date(key + 'T12:00:00Z').toLocaleDateString('id-ID', { month: 'short', timeZone: 'UTC' });
@@ -342,16 +352,25 @@ export default function DashboardPanel({ active }: { active: boolean }) {
   const money = useMemo(() => {
     const sum = (arr: Tx[]) => arr.reduce((s, t) => s + (Number(t.gross_amount) || 0), 0);
     const affTxs = txs.filter((t) => !!t.affiliate_code);
+    // Penjualan pada rentang tanggal terpilih (berdasarkan tanggal bayar, WIB)
+    const periodTxs = filteredTxs.filter((t) => {
+      if (!t.paid_at) return false;
+      const k = dayKey(t.paid_at);
+      return k >= range.from && k <= range.to;
+    });
     return {
       sales: sum(filteredTxs),
       orders: filteredTxs.length,
       estimates: filteredTxs.filter((t) => t.is_estimate).length,
+      periodSales: sum(periodTxs),
+      periodOrders: periodTxs.length,
+      periodEstimates: periodTxs.filter((t) => t.is_estimate).length,
       affOrders: affTxs.length,
       affSales: sum(affTxs),
       commissionPending: refs.filter((r) => r.status === 'pending').reduce((s, r) => s + (Number(r.commission) || 0), 0),
       commissionPaid: refs.filter((r) => r.status === 'paid').reduce((s, r) => s + (Number(r.commission) || 0), 0),
     };
-  }, [txs, refs, filteredTxs]);
+  }, [txs, refs, filteredTxs, range.from, range.to]);
 
   const rp = (n: number) => (hideMoney ? 'Rp ••••••' : fmtRp(n));
   const moneyAvailable = mode !== 'meta'; // order belum menyimpan sumber trafik, jadi tidak bisa dipisah per iklan
@@ -473,12 +492,22 @@ export default function DashboardPanel({ active }: { active: boolean }) {
                 </svg>
               </button>
             </div>
-            <div className="lp-hero-val money">{!moneyAvailable ? '—' : loadingMoney && !txs.length ? '…' : rp(money.sales)}</div>
+            <div className="lp-hero-val money">{!moneyAvailable ? '—' : loadingMoney && !txs.length ? '…' : rp(money.periodSales)}</div>
             <div className="lp-hero-sub">
               {moneyAvailable ? (
                 <>
-                  {nf(money.orders)} order sejak awal
-                  {money.estimates > 0 && ` · ${nf(money.estimates)} order lama berupa perkiraan`}
+                  {fmtRangeShort(range.from, range.to)} · {daysBetween(range.from, range.to).length} hari
+                  {money.periodEstimates > 0 && (
+                    <span
+                      className="lp-info"
+                      tabIndex={0}
+                      role="note"
+                      title={`${nf(money.periodEstimates)} order lama memakai nominal dari harga paket, belum dikonfirmasi dari Midtrans`}
+                      aria-label={`${nf(money.periodEstimates)} order lama memakai nominal dari harga paket, belum dikonfirmasi dari Midtrans`}
+                    >
+                      i
+                    </span>
+                  )}
                 </>
               ) : (
                 'Penjualan belum bisa dipisah per sumber iklan.'

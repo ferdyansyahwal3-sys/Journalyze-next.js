@@ -182,3 +182,32 @@
   .admin-root .ma-bar { transition: none; }
   .admin-root .ma-wrap.ma-loading { transition: none; }
 }
+
+/* ── Filter campaign / ad set / iklan ── */
+.admin-root .ma-filters {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 16px;
+}
+.admin-root .ma-filter select { max-width: 240px; text-overflow: ellipsis; }
+.admin-root .ma-filter.disabled { opacity: .45; cursor: not-allowed; }
+.admin-root .ma-filter.disabled select { cursor: not-allowed; }
+.admin-root .ma-scope { font-size: 12px; color: var(--text3); margin: -6px 0 16px; line-height: 1.6; }
+.admin-root .ma-scope b { color: var(--gold2); font-weight: 600; }
+
+/* ── Keterangan tanggal di kartu Biaya iklan ── */
+.admin-root .ma-wrap .lp-hero-sub { margin-top: 12px; }
+.admin-root .ma-wrap .lp-hero-sub.ma-hero-note { margin-top: 4px; color: var(--text3); font-size: 11px; }
+
+/* ── ma-left-fill: kotak statistik mengisi tinggi kartu Ringkasan performa ── */
+.admin-root .ma-wrap .lp-left { display: flex; flex-direction: column; }
+.admin-root .ma-wrap .lp-left .ma-stats {
+  flex: 1; grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+.admin-root .ma-wrap .lp-left .ma-stat {
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 16px 18px;
+}
+.admin-root .ma-wrap .lp-left .ma-stat-val { font-size: 32px; }
+
+@media (max-width: 720px) {
+  .admin-root .ma-wrap .lp-left .ma-stat-val { font-size: 24px; }
+}

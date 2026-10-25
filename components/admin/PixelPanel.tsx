@@ -1,14 +1,17 @@
 // components/admin/PixelPanel.tsx
-// Panel admin Pixel Tracking (gaya Scalev):
-//  1. Daftar Analitik (Jenis, Nama, Pixel ID) — bisa lebih dari satu
+// Halaman "Pengaturan Pixel" (sub-tab di menu Pixel):
+//  1. Ringkasan status + daftar Analitik (Jenis, Nama, Pixel ID) — bisa lebih dari satu
 //  2. Aturan Event (event, halaman dari dropdown, trigger, tujuan analitik, parameter)
 //  3. Uji Coba (mode debug + panduan Test Events)
-// Semua disimpan ke Supabase 'settings' — berlaku tanpa redeploy Vercel
+//  4. Event Log
+// Semua disimpan ke Supabase 'settings' — berlaku tanpa redeploy Vercel.
+// Tampilan memakai bahasa desain yang sama dengan Analitik Meta (gaya di pixel-settings.css).
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
 import { _sb, _sbAdmin } from '@/lib/supabaseClient';
 import { PIXEL_PAGES } from '@/lib/pixelPages.generated';
+import { useAdminStore } from '@/store/useAdminStore';
 import {
   DEFAULT_PIXEL_RULES,
   STANDARD_EVENTS,
@@ -22,6 +25,8 @@ import type {
   PixelTriggerType,
   PixelValueMode,
 } from '@/hooks/usePixel';
+import './dashboard.css';
+import './pixel-settings.css';
 
 interface PixelEvent {
   id: string;
@@ -250,48 +255,6 @@ function describeParams(r: PixelRule): string {
   return parts.length ? parts.join(' · ') : '—';
 }
 
-/* ── Style bersama ── */
-
-const fieldLabel: React.CSSProperties = {
-  fontSize: 11,
-  color: 'var(--text3, #6A6050)',
-  marginBottom: 6,
-  display: 'block',
-  fontFamily: "'JetBrains Mono',monospace",
-};
-
-const fieldInput: React.CSSProperties = {
-  width: '100%',
-  fontSize: 13,
-  padding: '9px 12px',
-  background: 'rgba(255,255,255,0.03)',
-  border: '1px solid var(--border, rgba(255,255,255,0.1))',
-  borderRadius: 8,
-  color: 'var(--text, #F8F4EC)',
-  fontFamily: "'JetBrains Mono',monospace",
-};
-
-const hintStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: 'var(--text3, #6A6050)',
-  marginTop: 6,
-  lineHeight: 1.5,
-};
-
-const pillBtn = (on: boolean, disabled: boolean): React.CSSProperties => ({
-  background: on ? 'var(--green-bg)' : 'rgba(255,255,255,0.04)',
-  border: `1px solid ${on ? 'var(--green-bd)' : 'var(--border)'}`,
-  color: on ? 'var(--green)' : 'var(--text3)',
-  borderRadius: 99,
-  padding: '5px 14px',
-  fontSize: 11,
-  fontWeight: 700,
-  fontFamily: "'JetBrains Mono',monospace",
-  cursor: disabled ? 'not-allowed' : 'pointer',
-  letterSpacing: 1,
-  minWidth: 72,
-});
-
 /* ════════════════════════════════════════════════════════════
    PAGE PICKER — dropdown multi-pilih, daftar halaman otomatis
    dari scripts/generate-pixel-pages.mjs (diperbarui tiap dev/build)
@@ -338,70 +301,32 @@ function PagePicker({ value, onChange }: { value: string; onChange: (v: string) 
     return selected.length > 3 ? `${shown} +${selected.length - 3}` : shown;
   };
 
-  const rowStyle: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: 10,
-    padding: '7px 12px',
-    cursor: 'pointer',
-    fontSize: 12,
-    fontFamily: "'JetBrains Mono',monospace",
-    color: 'var(--text, #F8F4EC)',
-  };
-
   return (
-    <div style={{ position: 'relative' }}>
+    <div className="ps-pp">
       <button
         type="button"
+        className={`ps-input ps-pp-btn${selected.length === 0 ? ' empty' : ''}`}
         onClick={() => setOpen((o) => !o)}
-        style={{
-          ...fieldInput,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 8,
-          textAlign: 'left',
-          cursor: 'pointer',
-          color: selected.length === 0 ? 'var(--text3, #6A6050)' : 'var(--text, #F8F4EC)',
-        }}
       >
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summary()}</span>
-        <span style={{ fontSize: 10 }}>{open ? '▲' : '▼'}</span>
+        <span className="ps-pp-sum">{summary()}</span>
+        <span className="ps-pp-caret">{open ? '▲' : '▼'}</span>
       </button>
 
       {open && (
         <>
-          <div
-            onClick={() => setOpen(false)}
-            style={{ position: 'fixed', inset: 0, zIndex: 40 }}
-          />
-          <div
-            style={{
-              position: 'absolute',
-              top: 'calc(100% + 6px)',
-              left: 0,
-              right: 0,
-              zIndex: 41,
-              background: 'var(--bg2, #121212)',
-              border: '1px solid var(--border2, rgba(255,255,255,0.15))',
-              borderRadius: 10,
-              boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-              overflow: 'hidden',
-            }}
-          >
-            <div style={{ maxHeight: 260, overflowY: 'auto' }}>
-              <label style={{ ...rowStyle, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="ps-pp-backdrop" onClick={() => setOpen(false)} />
+          <div className="ps-pp-menu">
+            <div className="ps-pp-list">
+              <label className="ps-pp-row sep">
                 <input type="checkbox" checked={allSelected} onChange={() => toggle('*')} />
                 <span>
                   <strong>Semua halaman</strong>
-                  <span style={{ display: 'block', fontSize: 10, color: 'var(--text3, #6A6050)' }}>
-                    Berlaku di seluruh halaman publik (admin tetap dikecualikan)
-                  </span>
+                  <small>Berlaku di seluruh halaman publik (admin tetap dikecualikan)</small>
                 </span>
               </label>
 
               {PIXEL_PAGES.map((p) => (
-                <label key={p.path} style={{ ...rowStyle, opacity: allSelected ? 0.4 : 1 }}>
+                <label key={p.path} className={`ps-pp-row${allSelected ? ' dim' : ''}`}>
                   <input
                     type="checkbox"
                     checked={selected.includes(p.path)}
@@ -410,28 +335,26 @@ function PagePicker({ value, onChange }: { value: string; onChange: (v: string) 
                   />
                   <span>
                     {p.path}
-                    {p.note && (
-                      <span style={{ display: 'block', fontSize: 10, color: 'var(--text3, #6A6050)' }}>{p.note}</span>
-                    )}
+                    {p.note && <small>{p.note}</small>}
                   </span>
                 </label>
               ))}
 
               {customSelected.map((p) => (
-                <label key={p} style={rowStyle}>
+                <label key={p} className="ps-pp-row">
                   <input type="checkbox" checked onChange={() => toggle(p)} />
                   <span>
                     {p}
-                    <span style={{ display: 'block', fontSize: 10, color: 'var(--text3, #6A6050)' }}>Path khusus</span>
+                    <small>Path khusus</small>
                   </span>
                 </label>
               ))}
             </div>
 
-            <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ display: 'flex', gap: 8 }}>
+            <div className="ps-pp-foot">
+              <div className="ps-pp-foot-row">
                 <input
-                  style={{ ...fieldInput, padding: '7px 10px', fontSize: 12 }}
+                  className="ps-input"
                   type="text"
                   placeholder="Path lain, mis. /promo atau /blog/*"
                   value={custom}
@@ -443,12 +366,12 @@ function PagePicker({ value, onChange }: { value: string; onChange: (v: string) 
                     }
                   }}
                 />
-                <button type="button" className="refresh-btn" onClick={addCustom}>
+                <button type="button" className="ps-btn" onClick={addCustom}>
                   Tambah
                 </button>
               </div>
-              {customError && <div style={{ ...hintStyle, color: 'var(--red)' }}>{customError}</div>}
-              <div style={hintStyle}>
+              {customError && <div className="ps-hint err">{customError}</div>}
+              <div className="ps-hint">
                 Daftar halaman diperbarui otomatis tiap kamu menjalankan dev atau deploy.
               </div>
             </div>
@@ -840,6 +763,9 @@ export default function PixelPanel({ active }: Props) {
 
   const activeAnalytics = analytics.filter((a) => a.enabled);
   const analyticsName = (id: string) => analytics.find((a) => a.id === id)?.name || '(dihapus)';
+  const activeRules = rules.filter((r) => r.enabled).length;
+  const tokenCount = analytics.filter((a) => secrets[a.pixelId]?.token).length;
+  const serverPurchaseCount = analytics.filter((a) => capiStatus[a.pixelId]).length;
 
   const previewScript =
     activeAnalytics.length > 0
@@ -859,667 +785,591 @@ ${activeAnalytics.map((a) => `fbq('init', '${a.pixelId}'); // ${a.name}`).join('
     } catch { return str; }
   };
 
+  const refreshAll = () => {
+    loadSettings();
+    loadEvents();
+  };
+
   if (!active) return null;
 
   const currentTriggerHint = form ? TRIGGER_OPTIONS.find((o) => o.value === form.trigger)?.hint : '';
+  const pixelOn = activeAnalytics.length > 0;
 
   return (
-    <div className="main">
-      {/* Header stats */}
-      <div className="stats-row" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
-        <div className="stat-card">
-          <div className="stat-lbl">Status Pixel</div>
-          <div className="stat-val" style={{ fontSize: 28, color: activeAnalytics.length > 0 ? 'var(--green)' : 'var(--text3)' }}>
-            {activeAnalytics.length > 0 ? '● AKTIF' : '○ NONAKTIF'}
-          </div>
-          <div className="stat-sub">
-            {analytics.length === 0
-              ? 'Belum ada analitik'
-              : `${activeAnalytics.length} dari ${analytics.length} analitik aktif`}
-          </div>
+    <div className="main lp-dash ps-wrap">
+      {/* Header */}
+      <div className="lp-head">
+        <div>
+          <div className="lp-eyebrow">Meta Pixel</div>
+          <h2 className="lp-title">Pengaturan <em>Pixel</em></h2>
+          <p className="lp-sub">Kelola analitik, aturan event, dan uji coba tracking untuk halaman publik Journalyze.</p>
         </div>
-        <div className="stat-card">
-          <div className="stat-lbl">PageView (log)</div>
-          <div className="stat-val gold">{statsPageView}</div>
-          <div className="stat-sub">Event tercatat di tabel pixel_events</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-lbl">Purchase (log)</div>
-          <div className="stat-val green">{statsPurchase}</div>
-          <div className="stat-sub">Event purchase yang dilacak</div>
+        <div className="ps-head-actions">
+          <button className="refresh-btn" onClick={refreshAll} disabled={eventsLoading}>
+            {eventsLoading ? <><span className="spinner" />Memuat...</> : '↻ Refresh'}
+          </button>
         </div>
       </div>
 
-      {/* Save message */}
+      {/* Pesan simpan */}
       {saveMsg && (
-        <div style={{
-          background: saveMsg.startsWith('✅') ? 'var(--green-bg)' : 'rgba(232,64,64,0.09)',
-          border: `1px solid ${saveMsg.startsWith('✅') ? 'var(--green-bd)' : 'rgba(232,64,64,0.25)'}`,
-          borderRadius: 10,
-          padding: '12px 20px',
-          fontSize: 13,
-          marginBottom: 16,
-          color: saveMsg.startsWith('✅') ? 'var(--green)' : 'var(--red)',
-        }}>
-          {saveMsg}
-        </div>
+        <div className={`ps-msg ${saveMsg.startsWith('✅') ? 'ok' : 'err'}`}>{saveMsg}</div>
       )}
 
-      {/* ═══ ANALITIK ═══ */}
-      <div className="section">
-        <div className="section-head">
-          <span className="section-title">📡 Analitik</span>
-          <button className="gen-btn" onClick={openNewAnalytics} disabled={savingAnalytics || aForm !== null}>
-            + Tambah Analitik
-          </button>
-        </div>
-        <div className="section-body" style={{ padding: 0 }}>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Nama</th>
-                  <th>Jenis</th>
-                  <th>Pixel ID</th>
-                  <th>Conversion API</th>
-                  <th>Status</th>
-                  <th>Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {analytics.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="date-text" style={{ textAlign: 'center', padding: 28 }}>
-                      Belum ada analitik. Klik &quot;+ Tambah Analitik&quot; untuk menambahkan Meta Pixel.
-                    </td>
-                  </tr>
-                ) : (
-                  analytics.map((a) => (
-                    <tr key={a.id} style={{ opacity: a.enabled ? 1 : 0.55 }}>
-                      <td className="key-mono" style={{ fontSize: 12, letterSpacing: 0 }}>{a.name}</td>
-                      <td className="date-text">{typeLabel(a.type)}</td>
-                      <td className="key-mono" style={{ fontSize: 12, letterSpacing: 1 }}>{a.pixelId}</td>
-                      <td className="date-text">
-                        {secrets[a.pixelId]?.token
-                          ? `✅ Token tersimpan di browser ini (${maskToken(secrets[a.pixelId].token)})`
-                          : '⚠️ Token belum diisi'}
-                        <div style={{ fontSize: 10, marginTop: 2 }}>
-                          {secrets[a.pixelId]?.testCode
-                            ? `Kode Testing: ${secrets[a.pixelId].testCode}`
-                            : 'Tanpa Kode Testing'}
-                        </div>
-                        {capiStatus[a.pixelId] !== undefined && (
-                          <div style={{ fontSize: 10, marginTop: 2 }}>
-                            {capiStatus[a.pixelId]
-                              ? 'Purchase otomatis dari server: aktif'
-                              : 'Purchase otomatis dari server: tidak aktif'}
-                          </div>
-                        )}
-                      </td>
-                      <td>
-                        <button
-                          onClick={() => handleToggleAnalytics(a.id)}
-                          disabled={savingAnalytics}
-                          style={pillBtn(a.enabled, savingAnalytics)}
-                        >
-                          {a.enabled ? '● ON' : '○ OFF'}
-                        </button>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button
-                            className="refresh-btn"
-                            onClick={() => handleTestEvent(a)}
-                            disabled={savingAnalytics || testingId !== null}
-                          >
-                            {testingId === a.id ? '⏳ Mengirim…' : '🧪 Kirim Tes'}
-                          </button>
-                          <button className="refresh-btn" onClick={() => openEditAnalytics(a)} disabled={savingAnalytics}>
-                            ✏️ Edit
-                          </button>
-                          <button className="refresh-btn" onClick={() => handleDeleteAnalytics(a.id)} disabled={savingAnalytics}>
-                            🗑️ Hapus
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+      {/* Baris atas: ringkasan + status */}
+      <div className="lp-top">
+        <div className="lp-card lp-left">
+          <div className="lp-card-title">
+            Ringkasan tracking
+            {pixelOn ? <span className="lp-live">Pixel aktif</span> : <span className="ps-badge">Belum aktif</span>}
           </div>
-
-          {testResult && (
-            <div style={{
-              margin: '16px 20px 0',
-              padding: '12px 16px',
-              background: testResult.ok ? 'var(--green-bg)' : 'rgba(232,64,64,0.09)',
-              border: `1px solid ${testResult.ok ? 'var(--green-bd)' : 'rgba(232,64,64,0.25)'}`,
-              borderRadius: 10,
-              fontSize: 12,
-              lineHeight: 1.6,
-              color: testResult.ok ? 'var(--green)' : 'var(--red)',
-            }}>
-              <strong>{testResult.ok ? '✅' : '❌'} {testResult.title}</strong>
-              <div style={{ marginTop: 4, wordBreak: 'break-word' }}>{testResult.text}</div>
+          <div className="ps-stats">
+            <div className="ps-stat">
+              <div className="ps-stat-lbl">Analitik aktif</div>
+              <div className="ps-stat-val">{activeAnalytics.length}<span style={{ color: 'var(--text3)' }}>/{analytics.length}</span></div>
             </div>
-          )}
-
-          <div style={{ padding: '16px 20px 20px' }}>
-            <div style={{
-              background: 'rgba(0,0,0,0.3)',
-              border: '1px solid var(--border2)',
-              borderRadius: 10,
-              padding: '16px 20px',
-            }}>
-              <div style={{
-                fontFamily: "'JetBrains Mono',monospace",
-                fontSize: 9,
-                letterSpacing: 2,
-                textTransform: 'uppercase',
-                color: 'var(--text3)',
-                marginBottom: 12,
-              }}>
-                Preview Script yang akan di-inject di halaman publik
-              </div>
-              <pre style={{
-                fontFamily: "'JetBrains Mono',monospace",
-                fontSize: 11,
-                color: activeAnalytics.length > 0 ? 'var(--gold2)' : 'var(--text3)',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-all',
-                lineHeight: 1.6,
-              }}>
-                {previewScript}
-              </pre>
+            <div className="ps-stat">
+              <div className="ps-stat-lbl">Aturan event aktif</div>
+              <div className="ps-stat-val">{activeRules}<span style={{ color: 'var(--text3)' }}>/{rules.length}</span></div>
             </div>
+            <div className="ps-stat">
+              <div className="ps-stat-lbl">Token CAPI (browser ini)</div>
+              <div className="ps-stat-val">{tokenCount}<span style={{ color: 'var(--text3)' }}>/{analytics.length}</span></div>
+            </div>
+            <div className="ps-stat">
+              <div className="ps-stat-lbl">Purchase dari server</div>
+              <div className="ps-stat-val">{serverPurchaseCount}<span style={{ color: 'var(--text3)' }}>/{analytics.length}</span></div>
+            </div>
+            <div className="ps-stat">
+              <div className="ps-stat-lbl">PageView (log)</div>
+              <div className="ps-stat-val gold">{statsPageView}</div>
+            </div>
+            <div className="ps-stat">
+              <div className="ps-stat-lbl">Purchase (log)</div>
+              <div className="ps-stat-val green">{statsPurchase}</div>
+            </div>
+          </div>
+        </div>
 
-            <div style={{
-              marginTop: 16,
-              padding: '12px 16px',
-              background: 'var(--blue-bg)',
-              border: '1px solid var(--blue-bd)',
-              borderRadius: 10,
-              fontSize: 12,
-              color: 'var(--blue)',
-              lineHeight: 1.6,
-            }}>
-              <strong>ℹ️ Cara kerja:</strong> Analitik dan aturan event disimpan di Supabase tabel <code>settings</code>.
-              Semua halaman publik membaca pengaturan ini saat load — tidak perlu redeploy Vercel.
-              Halaman <code>/admin</code> tidak pernah dilacak.
+        <div className="lp-card lp-hero">
+          <div>
+            <div className="lp-hero-lbl">Status Pixel</div>
+            <div className={`lp-hero-val money ps-hero-val ${pixelOn ? 'on' : 'off'}`}>
+              {pixelOn ? '● AKTIF' : '○ NONAKTIF'}
+            </div>
+            <div className="lp-hero-sub">
+              {analytics.length === 0
+                ? 'Belum ada analitik'
+                : `${activeAnalytics.length} dari ${analytics.length} analitik aktif`}
+            </div>
+          </div>
+          <div>
+            <div className="lp-hero-row">
+              <span>Pixel aktif</span>
+              <b className="ps-hero-names">{pixelOn ? activeAnalytics.map((a) => a.name).join(', ') : '—'}</b>
+            </div>
+            <div className="lp-hero-row">
+              <span>Aturan event aktif</span>
+              <b>{activeRules} dari {rules.length}</b>
+            </div>
+            <div className="lp-hero-row">
+              <span>Purchase otomatis (server)</span>
+              <b>{serverPurchaseCount > 0 ? 'Aktif' : 'Belum aktif'}</b>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ═══ ANALITIK ═══ */}
+      <div className="lp-card ps-section">
+        <div className="ps-sec-head">
+          <div>
+            <div className="ps-sec-title">Analitik</div>
+            <div className="ps-sec-sub">Daftar pixel yang dipasang di halaman publik.</div>
+          </div>
+          <div className="ps-sec-actions">
+            <button className="ps-btn-gold" onClick={openNewAnalytics} disabled={savingAnalytics || aForm !== null}>
+              + Tambah Analitik
+            </button>
+          </div>
+        </div>
+
+        {analytics.length === 0 ? (
+          <div className="ps-empty">
+            Belum ada analitik. Klik &quot;+ Tambah Analitik&quot; untuk menambahkan Meta Pixel.
+          </div>
+        ) : (
+          <div className="ps-pixels">
+            {analytics.map((a) => {
+              const secret = secrets[a.pixelId];
+              return (
+                <div key={a.id} className={`ps-px${a.enabled ? '' : ' off'}`}>
+                  <div>
+                    <div className="ps-px-name">
+                      {a.name}
+                      <span className="ps-tag">{typeLabel(a.type)}</span>
+                    </div>
+                    <div className="ps-px-id">{a.pixelId}</div>
+                  </div>
+
+                  <div className="ps-px-meta">
+                    {secret?.token ? (
+                      <span className="ps-badge ok">Token tersimpan di browser ini ({maskToken(secret.token)})</span>
+                    ) : (
+                      <span className="ps-badge warn">Token belum diisi</span>
+                    )}
+                    <span className="ps-badge">
+                      {secret?.testCode ? `Kode Testing: ${secret.testCode}` : 'Tanpa Kode Testing'}
+                    </span>
+                    {capiStatus[a.pixelId] !== undefined && (
+                      <span className={`ps-badge ${capiStatus[a.pixelId] ? 'ok' : ''}`}>
+                        Purchase otomatis dari server: {capiStatus[a.pixelId] ? 'aktif' : 'tidak aktif'}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="ps-px-actions">
+                    <button
+                      className={`ps-pill${a.enabled ? ' on' : ''}`}
+                      onClick={() => handleToggleAnalytics(a.id)}
+                      disabled={savingAnalytics}
+                    >
+                      {a.enabled ? '● ON' : '○ OFF'}
+                    </button>
+                    <button
+                      className="ps-btn"
+                      onClick={() => handleTestEvent(a)}
+                      disabled={savingAnalytics || testingId !== null}
+                    >
+                      {testingId === a.id ? '⏳ Mengirim…' : '🧪 Kirim Tes'}
+                    </button>
+                    <button className="ps-btn" onClick={() => openEditAnalytics(a)} disabled={savingAnalytics}>
+                      ✏️ Edit
+                    </button>
+                    <button className="ps-btn danger" onClick={() => handleDeleteAnalytics(a.id)} disabled={savingAnalytics}>
+                      🗑️ Hapus
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {testResult && (
+          <div className={`ps-result ${testResult.ok ? 'ok' : 'err'}`}>
+            <strong>{testResult.ok ? '✅' : '❌'} {testResult.title}</strong>
+            <div>{testResult.text}</div>
+          </div>
+        )}
+
+        <details className="ps-details">
+          <summary>Preview script yang akan di-inject di halaman publik</summary>
+          <div className="ps-details-body">
+            <pre className="ps-pre" style={{ color: pixelOn ? 'var(--gold2)' : 'var(--text3)' }}>{previewScript}</pre>
+          </div>
+        </details>
+
+        <details className="ps-details">
+          <summary>Cara kerja penyimpanan</summary>
+          <div className="ps-details-body ps-info">
+            <p>
+              Analitik dan aturan event disimpan di Supabase tabel <code>settings</code>. Semua halaman publik
+              membaca pengaturan ini saat load, jadi tidak perlu redeploy Vercel. Halaman <code>/admin</code> tidak
+              pernah dilacak.
+            </p>
+            <p>
               <strong>Conversion API Token &amp; Kode Testing</strong> disimpan hanya di browser admin ini
               (localStorage), tidak masuk Supabase, jadi pengunjung tidak bisa melihatnya. Konsekuensinya, nilai itu
               hanya ada di browser tempat kamu mengisinya dan dipakai oleh tombol &quot;Kirim Tes&quot;. Purchase
               otomatis dari server (webhook) tidak bisa membaca browser, jadi itu hanya aktif kalau token juga
               dipasang sebagai environment variable server.
-            </div>
+            </p>
           </div>
-        </div>
+        </details>
       </div>
 
       {/* ═══ ATURAN EVENT ═══ */}
-      <div className="section">
-        <div className="section-head">
-          <span className="section-title">🎯 Aturan Event</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button className="refresh-btn" onClick={handleResetRules} disabled={savingRules}>
+      <div className="lp-card ps-section">
+        <div className="ps-sec-head">
+          <div>
+            <div className="ps-sec-title">Aturan Event</div>
+            <div className="ps-sec-sub">Kapan dan di halaman mana event dikirim ke analitik.</div>
+          </div>
+          <div className="ps-sec-actions">
+            <button className="ps-btn" onClick={handleResetRules} disabled={savingRules}>
               ↺ Reset ke Awal
             </button>
-            <button className="gen-btn" onClick={openNewForm} disabled={savingRules || form !== null}>
+            <button className="ps-btn-gold" onClick={openNewForm} disabled={savingRules || form !== null}>
               + Tambah Aturan
             </button>
           </div>
         </div>
-        <div className="section-body" style={{ padding: 0 }}>
-          {activeAnalytics.length === 0 && (
-            <div style={{
-              margin: '16px 20px 0',
-              padding: '10px 14px',
-              background: 'rgba(232,64,64,0.09)',
-              border: '1px solid rgba(232,64,64,0.25)',
-              borderRadius: 8,
-              fontSize: 12,
-              color: 'var(--red)',
-              lineHeight: 1.6,
-            }}>
-              ⚠️ Belum ada analitik yang aktif, jadi semua aturan tidak mengirim event walaupun statusnya ON.
-            </div>
-          )}
 
-          {/* Form tambah / edit aturan */}
-          {form && (
-            <div style={{
-              margin: '16px 20px 0',
-              padding: '18px 20px',
-              background: 'rgba(0,0,0,0.3)',
-              border: '1px solid var(--border2, rgba(255,255,255,0.12))',
-              borderRadius: 10,
-            }}>
-              <div style={{
-                fontFamily: "'JetBrains Mono',monospace",
-                fontSize: 10,
-                letterSpacing: 2,
-                textTransform: 'uppercase',
-                color: 'var(--gold2, #E8C567)',
-                marginBottom: 14,
-              }}>
-                {form.id ? 'Edit Aturan' : 'Aturan Baru'}
-              </div>
+        {activeAnalytics.length === 0 && (
+          <div className="ps-alert">
+            ⚠️ Belum ada analitik yang aktif, jadi semua aturan tidak mengirim event walaupun statusnya ON.
+          </div>
+        )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: 14 }}>
-                {/* Event */}
-                <div>
-                  <label style={fieldLabel}>Event</label>
-                  <select
-                    style={fieldInput}
-                    value={form.eventChoice}
-                    onChange={(e) => updateForm({ eventChoice: e.target.value })}
-                  >
-                    {STANDARD_EVENTS.map((ev) => (
-                      <option key={ev} value={ev}>{ev}</option>
-                    ))}
-                    <option value={CUSTOM}>Custom event…</option>
-                  </select>
-                  {form.eventChoice === CUSTOM && (
-                    <input
-                      style={{ ...fieldInput, marginTop: 8 }}
-                      type="text"
-                      placeholder="NamaEventCustom"
-                      value={form.customEvent}
-                      onChange={(e) => updateForm({ customEvent: e.target.value })}
-                    />
-                  )}
-                </div>
+        {/* Form tambah / edit aturan */}
+        {form && (
+          <div className="ps-form">
+            <div className="ps-form-title">{form.id ? 'Edit Aturan' : 'Aturan Baru'}</div>
 
-                {/* Halaman — dropdown otomatis */}
-                <div>
-                  <label style={fieldLabel}>Halaman</label>
-                  <PagePicker value={form.pages} onChange={(v) => updateForm({ pages: v })} />
-                  <div style={hintStyle}>
-                    Beranda ada di <code>/</code> (alamat /home dialihkan ke sana).
-                  </div>
-                </div>
-
-                {/* Trigger */}
-                <div>
-                  <label style={fieldLabel}>Trigger</label>
-                  <select
-                    style={fieldInput}
-                    value={form.trigger}
-                    onChange={(e) => updateForm({ trigger: e.target.value as PixelTriggerType })}
-                  >
-                    {TRIGGER_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                  {form.trigger === 'click' && (
-                    <input
-                      style={{ ...fieldInput, marginTop: 8 }}
-                      type="text"
-                      placeholder="#btn-daftar  atau  text:Dapatkan Akses"
-                      value={form.selector}
-                      onChange={(e) => updateForm({ selector: e.target.value })}
-                    />
-                  )}
-                  {form.trigger === 'scroll' && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                      <input
-                        style={{ ...fieldInput, width: 90 }}
-                        type="number"
-                        min={1}
-                        max={100}
-                        value={form.scrollPercent}
-                        onChange={(e) => updateForm({ scrollPercent: e.target.value })}
-                      />
-                      <span style={{ fontSize: 12, color: 'var(--text3, #6A6050)' }}>% dari tinggi halaman</span>
-                    </div>
-                  )}
-                  <div style={hintStyle}>{currentTriggerHint}</div>
-                </div>
-
-                {/* Kirim ke */}
-                <div>
-                  <label style={fieldLabel}>Kirim ke</label>
-                  {analytics.length === 0 ? (
-                    <div style={hintStyle}>Belum ada analitik. Tambahkan dulu di bagian Analitik.</div>
-                  ) : (
-                    <div style={{
-                      ...fieldInput,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 8,
-                      maxHeight: 130,
-                      overflowY: 'auto',
-                    }}>
-                      {analytics.map((a) => (
-                        <label key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12 }}>
-                          <input
-                            type="checkbox"
-                            checked={form.targets.includes(a.id)}
-                            onChange={() => toggleTarget(a.id)}
-                          />
-                          <span>{a.name}</span>
-                          <span style={{ color: 'var(--text3, #6A6050)', fontSize: 10 }}>{a.pixelId}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                  <div style={hintStyle}>Tanpa centang = kirim ke semua analitik aktif.</div>
-                </div>
-
-                {/* Nilai */}
-                <div>
-                  <label style={fieldLabel}>Nilai (value)</label>
-                  <select
-                    style={fieldInput}
-                    value={form.valueMode}
-                    onChange={(e) => updateForm({ valueMode: e.target.value as PixelValueMode })}
-                  >
-                    {VALUE_MODE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                  {form.valueMode === 'fixed' && (
-                    <input
-                      style={{ ...fieldInput, marginTop: 8 }}
-                      type="number"
-                      min={0}
-                      placeholder="149000"
-                      value={form.value}
-                      onChange={(e) => updateForm({ value: e.target.value })}
-                    />
-                  )}
-                  {form.valueMode === 'auto' && (
-                    <div style={hintStyle}>
-                      Otomatis terisi di /upgrade dan /order (harga paket terpilih) serta titik pembayaran. Di halaman lain, nilai tidak ikut terkirim.
-                    </div>
-                  )}
-                </div>
-
-                {/* Content name */}
-                <div>
-                  <label style={fieldLabel}>Nama konten (opsional)</label>
-                  <input
-                    style={fieldInput}
-                    type="text"
-                    placeholder="Journalyze Premium"
-                    value={form.contentName}
-                    onChange={(e) => updateForm({ contentName: e.target.value })}
-                  />
-                  <div style={hintStyle}>Mata uang selalu IDR.</div>
-                </div>
-              </div>
-
-              {formError && (
-                <div style={{
-                  marginTop: 14,
-                  padding: '10px 14px',
-                  background: 'rgba(232,64,64,0.09)',
-                  border: '1px solid rgba(232,64,64,0.25)',
-                  borderRadius: 8,
-                  fontSize: 12,
-                  color: 'var(--red)',
-                }}>
-                  ❌ {formError}
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-                <button className="gen-btn" onClick={handleSubmitForm} disabled={savingRules}>
-                  {savingRules ? '⏳ Menyimpan...' : form.id ? '💾 Simpan Perubahan' : '💾 Simpan Aturan'}
-                </button>
-                <button
-                  className="refresh-btn"
-                  onClick={() => { setForm(null); setFormError(''); }}
-                  disabled={savingRules}
+            <div className="ps-form-grid">
+              {/* Event */}
+              <div>
+                <label className="ps-label">Event</label>
+                <select
+                  className="ps-input"
+                  value={form.eventChoice}
+                  onChange={(e) => updateForm({ eventChoice: e.target.value })}
                 >
-                  Batal
-                </button>
+                  {STANDARD_EVENTS.map((ev) => (
+                    <option key={ev} value={ev}>{ev}</option>
+                  ))}
+                  <option value={CUSTOM}>Custom event…</option>
+                </select>
+                {form.eventChoice === CUSTOM && (
+                  <input
+                    className="ps-input ps-gap-top"
+                    type="text"
+                    placeholder="NamaEventCustom"
+                    value={form.customEvent}
+                    onChange={(e) => updateForm({ customEvent: e.target.value })}
+                  />
+                )}
+              </div>
+
+              {/* Halaman — dropdown otomatis */}
+              <div>
+                <label className="ps-label">Halaman</label>
+                <PagePicker value={form.pages} onChange={(v) => updateForm({ pages: v })} />
+                <div className="ps-hint">
+                  Beranda ada di <code>/</code> (alamat /home dialihkan ke sana).
+                </div>
+              </div>
+
+              {/* Trigger */}
+              <div>
+                <label className="ps-label">Trigger</label>
+                <select
+                  className="ps-input"
+                  value={form.trigger}
+                  onChange={(e) => updateForm({ trigger: e.target.value as PixelTriggerType })}
+                >
+                  {TRIGGER_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                {form.trigger === 'click' && (
+                  <input
+                    className="ps-input ps-gap-top"
+                    type="text"
+                    placeholder="#btn-daftar  atau  text:Dapatkan Akses"
+                    value={form.selector}
+                    onChange={(e) => updateForm({ selector: e.target.value })}
+                  />
+                )}
+                {form.trigger === 'scroll' && (
+                  <div className="ps-inline">
+                    <input
+                      className="ps-input"
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={form.scrollPercent}
+                      onChange={(e) => updateForm({ scrollPercent: e.target.value })}
+                    />
+                    <span>% dari tinggi halaman</span>
+                  </div>
+                )}
+                <div className="ps-hint">{currentTriggerHint}</div>
+              </div>
+
+              {/* Kirim ke */}
+              <div>
+                <label className="ps-label">Kirim ke</label>
+                {analytics.length === 0 ? (
+                  <div className="ps-hint">Belum ada analitik. Tambahkan dulu di bagian Analitik.</div>
+                ) : (
+                  <div className="ps-checks">
+                    {analytics.map((a) => (
+                      <label key={a.id}>
+                        <input
+                          type="checkbox"
+                          checked={form.targets.includes(a.id)}
+                          onChange={() => toggleTarget(a.id)}
+                        />
+                        <span>{a.name}</span>
+                        <small>{a.pixelId}</small>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <div className="ps-hint">Tanpa centang = kirim ke semua analitik aktif.</div>
+              </div>
+
+              {/* Nilai */}
+              <div>
+                <label className="ps-label">Nilai (value)</label>
+                <select
+                  className="ps-input"
+                  value={form.valueMode}
+                  onChange={(e) => updateForm({ valueMode: e.target.value as PixelValueMode })}
+                >
+                  {VALUE_MODE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                {form.valueMode === 'fixed' && (
+                  <input
+                    className="ps-input ps-gap-top"
+                    type="number"
+                    min={0}
+                    placeholder="149000"
+                    value={form.value}
+                    onChange={(e) => updateForm({ value: e.target.value })}
+                  />
+                )}
+                {form.valueMode === 'auto' && (
+                  <div className="ps-hint">
+                    Otomatis terisi di /upgrade dan /order (harga paket terpilih) serta titik pembayaran. Di halaman lain, nilai tidak ikut terkirim.
+                  </div>
+                )}
+              </div>
+
+              {/* Content name */}
+              <div>
+                <label className="ps-label">Nama konten (opsional)</label>
+                <input
+                  className="ps-input"
+                  type="text"
+                  placeholder="Journalyze Premium"
+                  value={form.contentName}
+                  onChange={(e) => updateForm({ contentName: e.target.value })}
+                />
+                <div className="ps-hint">Mata uang selalu IDR.</div>
               </div>
             </div>
-          )}
 
-          {/* Tabel aturan */}
-          <div className="table-wrap" style={{ marginTop: 16 }}>
-            <table>
-              <thead>
+            {formError && <div className="ps-form-error">❌ {formError}</div>}
+
+            <div className="ps-form-actions">
+              <button className="ps-btn-gold" onClick={handleSubmitForm} disabled={savingRules}>
+                {savingRules ? '⏳ Menyimpan...' : form.id ? '💾 Simpan Perubahan' : '💾 Simpan Aturan'}
+              </button>
+              <button
+                className="ps-btn"
+                onClick={() => { setForm(null); setFormError(''); }}
+                disabled={savingRules}
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Tabel aturan */}
+        <div className="ps-table-wrap">
+          <table className="ps-table">
+            <thead>
+              <tr>
+                <th>Event</th>
+                <th>Halaman</th>
+                <th>Trigger</th>
+                <th>Kirim ke</th>
+                <th>Parameter</th>
+                <th>Status</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rules.length === 0 ? (
                 <tr>
-                  <th>Event</th>
-                  <th>Halaman</th>
-                  <th>Trigger</th>
-                  <th>Kirim ke</th>
-                  <th>Parameter</th>
-                  <th>Status</th>
-                  <th>Aksi</th>
+                  <td colSpan={7} className="ps-empty">
+                    Belum ada aturan. Klik &quot;+ Tambah Aturan&quot; untuk mulai mengirim event.
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {rules.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="date-text" style={{ textAlign: 'center', padding: 28 }}>
-                      Belum ada aturan. Klik &quot;+ Tambah Aturan&quot; untuk mulai mengirim event.
+              ) : (
+                rules.map((r) => (
+                  <tr key={r.id} className={r.enabled ? '' : 'off'}>
+                    <td className="ps-event-name">{r.event}</td>
+                    <td>
+                      {splitPages(r.pages).map((p) => (
+                        <span key={p} className="ps-chip">{p === '*' ? 'Semua halaman' : p}</span>
+                      ))}
+                    </td>
+                    <td>
+                      {triggerLabel(r.trigger)}
+                      {r.trigger === 'click' && r.selector && (
+                        <div className="ps-muted ps-mono">{r.selector}</div>
+                      )}
+                      {r.trigger === 'scroll' && (
+                        <div className="ps-muted">{r.scrollPercent ?? 50}%</div>
+                      )}
+                    </td>
+                    <td>
+                      {r.targets && r.targets.length > 0 ? r.targets.map(analyticsName).join(', ') : 'Semua analitik'}
+                    </td>
+                    <td>{describeParams(r)}</td>
+                    <td>
+                      <button
+                        className={`ps-pill${r.enabled ? ' on' : ''}`}
+                        onClick={() => handleToggleRule(r.id)}
+                        disabled={savingRules}
+                      >
+                        {r.enabled ? '● ON' : '○ OFF'}
+                      </button>
+                    </td>
+                    <td>
+                      <div className="ps-row-actions">
+                        <button className="ps-btn" onClick={() => openEditForm(r)} disabled={savingRules}>
+                          ✏️ Edit
+                        </button>
+                        <button className="ps-btn danger" onClick={() => handleDeleteRule(r.id)} disabled={savingRules}>
+                          🗑️ Hapus
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                ) : (
-                  rules.map((r) => (
-                    <tr key={r.id} style={{ opacity: r.enabled ? 1 : 0.55 }}>
-                      <td className="key-mono" style={{ fontSize: 12, letterSpacing: 0 }}>{r.event}</td>
-                      <td className="date-text">{r.pages}</td>
-                      <td className="date-text">
-                        {triggerLabel(r.trigger)}
-                        {r.trigger === 'click' && r.selector && (
-                          <div className="key-mono" style={{ fontSize: 10, letterSpacing: 0, marginTop: 2 }}>{r.selector}</div>
-                        )}
-                        {r.trigger === 'scroll' && (
-                          <div style={{ fontSize: 10, marginTop: 2 }}>{r.scrollPercent ?? 50}%</div>
-                        )}
-                      </td>
-                      <td className="date-text">
-                        {r.targets && r.targets.length > 0 ? r.targets.map(analyticsName).join(', ') : 'Semua analitik'}
-                      </td>
-                      <td className="date-text">{describeParams(r)}</td>
-                      <td>
-                        <button
-                          onClick={() => handleToggleRule(r.id)}
-                          disabled={savingRules}
-                          style={pillBtn(r.enabled, savingRules)}
-                        >
-                          {r.enabled ? '● ON' : '○ OFF'}
-                        </button>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button className="refresh-btn" onClick={() => openEditForm(r)} disabled={savingRules}>
-                            ✏️ Edit
-                          </button>
-                          <button className="refresh-btn" onClick={() => handleDeleteRule(r.id)} disabled={savingRules}>
-                            🗑️ Hapus
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
       {/* ═══ UJI COBA ═══ */}
-      <div className="section">
-        <div className="section-head">
-          <span className="section-title">🧪 Uji Coba</span>
-          <span style={{ fontSize: 10, color: 'var(--text3)', fontFamily: "'JetBrains Mono',monospace" }}>
-            Pastikan aturan jalan sebelum memasang iklan
-          </span>
-        </div>
-        <div className="section-body">
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <div style={{ minWidth: 260, flex: 1, maxWidth: 420 }}>
-              <label style={fieldLabel}>Halaman yang dibuka</label>
-              <select style={fieldInput} value={testPage} onChange={(e) => setTestPage(e.target.value)}>
-                {testablePages.map((p) => (
-                  <option key={p.path} value={p.path}>{p.path}</option>
-                ))}
-              </select>
-            </div>
-            <button
-              className="gen-btn"
-              onClick={() => window.open(`${testPage}?pixel_debug=1`, '_blank')}
-            >
-              🧪 Buka dengan Mode Debug
-            </button>
+      <div className="lp-card ps-section">
+        <div className="ps-sec-head">
+          <div>
+            <div className="ps-sec-title">Uji Coba</div>
+            <div className="ps-sec-sub">Pastikan aturan jalan sebelum memasang iklan.</div>
           </div>
+        </div>
 
-          <div style={{ ...hintStyle, marginTop: 14, fontSize: 12 }}>
-            <strong>Mode Debug:</strong> halaman terbuka dengan panel kecil di pojok kiri bawah yang mencatat tiap event
-            yang terkirim (nama event, tujuan analitik, parameter) dan alasan kalau tidak ada yang terkirim.
-            Debug aktif selama tab itu terbuka; tambahkan <code>?pixel_debug=0</code> di URL untuk mematikan.
+        <div className="ps-test-row">
+          <div className="ps-test-pick">
+            <label className="ps-label">Halaman yang dibuka</label>
+            <select className="ps-input" value={testPage} onChange={(e) => setTestPage(e.target.value)}>
+              {testablePages.map((p) => (
+                <option key={p.path} value={p.path}>{p.path}</option>
+              ))}
+            </select>
           </div>
-          <div style={{ ...hintStyle, fontSize: 12 }}>
-            <strong>Cek di sisi Meta:</strong> Events Manager → pilih Pixel → tab <em>Test Events</em> → masukkan URL situs
-            lalu buka. Event dari browser itu akan muncul di sana. Untuk event dari server (Conversion API), isi
-            Kode Testing di analitik lalu klik &quot;Kirim Tes&quot; di tabel Analitik; hasilnya muncul di Test Events
-            dengan sumber &quot;Server&quot;.
-          </div>
-        </div>
-      </div>
-
-      {/* Placeholder stats */}
-      <div className="section">
-        <div className="section-head">
-          <span className="section-title">📊 Statistik Placeholder</span>
-          <span style={{ fontSize: 10, color: 'var(--text3)', fontFamily: "'JetBrains Mono',monospace" }}>
-            Data dari Meta Ads Manager
-          </span>
-        </div>
-        <div className="section-body">
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4,1fr)',
-            gap: 16,
-          }}>
-            {[
-              { label: 'Reach', val: '—', color: 'var(--text3)' },
-              { label: 'Impressions', val: '—', color: 'var(--text3)' },
-              { label: 'Click (Link)', val: '—', color: 'var(--text3)' },
-              { label: 'Purchase Event', val: statsPurchase || '—', color: 'var(--green)' },
-            ].map((s) => (
-              <div key={s.label} className="stat-card">
-                <div className="stat-lbl">{s.label}</div>
-                <div className="stat-val" style={{ fontSize: 32, color: s.color }}>{s.val}</div>
-                <div className="stat-sub">Lihat di Meta Ads Manager untuk data real-time</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Event log table */}
-      <div className="section">
-        <div className="section-head">
-          <span className="section-title">📋 Event Log (pixel_events)</span>
-          <button className="refresh-btn" onClick={loadEvents} disabled={eventsLoading}>
-            {eventsLoading ? '⏳' : '🔄'} Refresh
+          <button
+            className="ps-btn-gold"
+            onClick={() => window.open(`${testPage}?pixel_debug=1`, '_blank')}
+          >
+            🧪 Buka dengan Mode Debug
           </button>
         </div>
-        <div className="section-body" style={{ padding: 0 }}>
-          {eventsLoading ? (
-            <div className="empty-state">Memuat event log...</div>
-          ) : events.length === 0 ? (
-            <div className="empty-state">
-              <div style={{ fontSize: 32, marginBottom: 12 }}>📡</div>
-              <div>Belum ada event tercatat.</div>
-              <div style={{ fontSize: 12, marginTop: 8 }}>
-                Event akan muncul di sini setelah Pixel aktif dan halaman publik dibuka.
-              </div>
-            </div>
-          ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Event</th>
-                    <th>Page</th>
-                    <th>Metadata</th>
-                    <th>Waktu</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {events.map((ev) => (
-                    <tr key={ev.id}>
-                      <td>
-                        <span
-                          className="badge"
-                          style={{
-                            background: ev.event_name === 'PageView' ? 'var(--blue-bg)' : 'var(--green-bg)',
-                            color: ev.event_name === 'PageView' ? 'var(--blue)' : 'var(--green)',
-                            border: `1px solid ${ev.event_name === 'PageView' ? 'var(--blue-bd)' : 'var(--green-bd)'}`,
-                          }}
-                        >
-                          {ev.event_name}
-                        </span>
-                      </td>
-                      <td className="key-mono" style={{ fontSize: 11, letterSpacing: 0 }}>
-                        {ev.page || '—'}
-                      </td>
-                      <td className="date-text">
-                        {ev.metadata ? JSON.stringify(ev.metadata).slice(0, 40) : '—'}
-                      </td>
-                      <td className="date-text">{formatDate(ev.created_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+
+        <p className="ps-test-note">
+          <strong>Mode Debug:</strong> halaman terbuka dengan panel kecil di pojok kiri bawah yang mencatat tiap event
+          yang terkirim (nama event, tujuan analitik, parameter) dan alasan kalau tidak ada yang terkirim.
+          Debug aktif selama tab itu terbuka; tambahkan <code>?pixel_debug=0</code> di URL untuk mematikan.
+        </p>
+        <p className="ps-test-note" style={{ marginTop: 8 }}>
+          <strong>Cek di sisi Meta:</strong> Events Manager → pilih Pixel → tab <em>Test Events</em> → masukkan URL situs
+          lalu buka. Event dari browser itu akan muncul di sana. Untuk event dari server (Conversion API), isi
+          Kode Testing di analitik lalu klik &quot;Kirim Tes&quot; di bagian Analitik; hasilnya muncul di Test Events
+          dengan sumber &quot;Server&quot;.
+        </p>
       </div>
 
-      {/* ═══ MODAL TAMBAH / EDIT ANALITIK (gaya Scalev) ═══ */}
+      {/* ═══ Arahan ke Analitik Meta ═══ */}
+      <div className="lp-card ps-section ps-cta">
+        <div>
+          <div className="ps-sec-title">Angka performa iklan</div>
+          <p>Reach, impressions, klik link, biaya, dan hasil iklan ada lengkap di tab Analitik Meta.</p>
+        </div>
+        <button className="ps-btn-gold" onClick={() => useAdminStore.getState().setPixelSubTab('meta')}>
+          Buka Analitik Meta →
+        </button>
+      </div>
+
+      {/* ═══ EVENT LOG ═══ */}
+      <div className="lp-card ps-section">
+        <div className="ps-sec-head">
+          <div>
+            <div className="ps-sec-title">Event Log</div>
+            <div className="ps-sec-sub">20 event terakhir di tabel pixel_events.</div>
+          </div>
+          <div className="ps-sec-actions">
+            <button className="ps-btn" onClick={loadEvents} disabled={eventsLoading}>
+              {eventsLoading ? '⏳' : '🔄'} Refresh
+            </button>
+          </div>
+        </div>
+
+        {eventsLoading ? (
+          <div className="ps-empty">Memuat event log...</div>
+        ) : events.length === 0 ? (
+          <div className="ps-empty">
+            <div style={{ fontSize: 32, marginBottom: 12 }}>📡</div>
+            <div>Belum ada event tercatat.</div>
+            <div style={{ fontSize: 12, marginTop: 8 }}>
+              Event akan muncul di sini setelah Pixel aktif dan halaman publik dibuka.
+            </div>
+          </div>
+        ) : (
+          <div className="ps-table-wrap">
+            <table className="ps-table" style={{ minWidth: 560 }}>
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>Page</th>
+                  <th>Metadata</th>
+                  <th>Waktu</th>
+                </tr>
+              </thead>
+              <tbody>
+                {events.map((ev) => (
+                  <tr key={ev.id}>
+                    <td>
+                      <span className={`ps-badge ${ev.event_name === 'PageView' ? 'blue' : 'ok'}`}>
+                        {ev.event_name}
+                      </span>
+                    </td>
+                    <td className="ps-mono">{ev.page || '—'}</td>
+                    <td className="ps-muted" style={{ marginTop: 0 }}>
+                      {ev.metadata ? JSON.stringify(ev.metadata).slice(0, 40) : '—'}
+                    </td>
+                    <td className="ps-muted" style={{ marginTop: 0 }}>{formatDate(ev.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ═══ MODAL TAMBAH / EDIT ANALITIK ═══ */}
       {aForm && (
         <div
+          className="ps-overlay"
           onClick={() => { if (!savingAnalytics) setAForm(null); }}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.65)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-            zIndex: 1000,
-          }}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: 'min(520px, 100%)',
-              background: 'var(--bg2, #121212)',
-              border: '1px solid var(--border2, rgba(255,255,255,0.15))',
-              borderRadius: 14,
-              boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
-              padding: '22px 24px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
-              <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text, #F8F4EC)' }}>
-                {aForm.id ? 'Edit Analitik' : 'Tambah Analitik'}
-              </span>
+          <div className="ps-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="ps-dialog-head">
+              <span className="ps-dialog-title">{aForm.id ? 'Edit Analitik' : 'Tambah Analitik'}</span>
               <button
+                className="ps-close"
                 onClick={() => setAForm(null)}
                 disabled={savingAnalytics}
-                style={{ background: 'transparent', border: 'none', color: 'var(--red, #E84040)', fontSize: 18, cursor: 'pointer' }}
+                aria-label="Tutup"
               >
                 ✕
               </button>
             </div>
 
-            <div style={{ marginBottom: 14 }}>
-              <label style={fieldLabel}>Jenis</label>
+            <div className="ps-field">
+              <label className="ps-label">Jenis</label>
               <select
-                style={fieldInput}
+                className="ps-input"
                 value={aForm.type}
                 onChange={(e) => setAForm({ ...aForm, type: e.target.value as PixelAnalyticsType })}
               >
@@ -1529,10 +1379,10 @@ ${activeAnalytics.map((a) => `fbq('init', '${a.pixelId}'); // ${a.name}`).join('
               </select>
             </div>
 
-            <div style={{ marginBottom: 14 }}>
-              <label style={fieldLabel}>Nama <span style={{ color: 'var(--red, #E84040)' }}>*</span></label>
+            <div className="ps-field">
+              <label className="ps-label">Nama <span className="ps-req">*</span></label>
               <input
-                style={fieldInput}
+                className="ps-input"
                 type="text"
                 placeholder="Contoh: Pixel Utama"
                 value={aForm.name}
@@ -1540,10 +1390,11 @@ ${activeAnalytics.map((a) => `fbq('init', '${a.pixelId}'); // ${a.name}`).join('
               />
             </div>
 
-            <div style={{ marginBottom: 14 }}>
-              <label style={fieldLabel}>Pixel ID <span style={{ color: 'var(--red, #E84040)' }}>*</span></label>
+            <div className="ps-field">
+              <label className="ps-label">Pixel ID <span className="ps-req">*</span></label>
               <input
-                style={{ ...fieldInput, letterSpacing: 1 }}
+                className="ps-input"
+                style={{ letterSpacing: 1 }}
                 type="text"
                 inputMode="numeric"
                 placeholder="Contoh: 123456789012345"
@@ -1552,10 +1403,10 @@ ${activeAnalytics.map((a) => `fbq('init', '${a.pixelId}'); // ${a.name}`).join('
               />
             </div>
 
-            <div style={{ marginBottom: 14 }}>
-              <label style={fieldLabel}>Conversion API Token (opsional)</label>
+            <div className="ps-field">
+              <label className="ps-label">Conversion API Token (opsional)</label>
               <input
-                style={fieldInput}
+                className="ps-input"
                 type="password"
                 autoComplete="off"
                 placeholder={
@@ -1566,50 +1417,38 @@ ${activeAnalytics.map((a) => `fbq('init', '${a.pixelId}'); // ${a.name}`).join('
                 value={aForm.token}
                 onChange={(e) => setAForm({ ...aForm, token: e.target.value })}
               />
-              <div style={hintStyle}>
+              <div className="ps-hint">
                 Events Manager → Settings → Conversions API → Generate access token. Disimpan hanya di browser ini.
               </div>
             </div>
 
-            <div style={{ marginBottom: 14 }}>
-              <label style={fieldLabel}>Kode Testing (opsional)</label>
+            <div className="ps-field">
+              <label className="ps-label">Kode Testing (opsional)</label>
               <input
-                style={fieldInput}
+                className="ps-input"
                 type="text"
                 placeholder="Contoh: TEST12345"
                 value={aForm.testCode}
                 onChange={(e) => setAForm({ ...aForm, testCode: e.target.value })}
               />
-              <div style={hintStyle}>
+              <div className="ps-hint">
                 Dari Events Manager → Test Events. Hanya dipakai tombol &quot;Kirim Tes&quot;, tidak mempengaruhi
                 event produksi.
               </div>
             </div>
 
-            <div style={{ ...hintStyle, marginBottom: 6 }}>
+            <div className="ps-hint">
               Token dan Kode Testing tidak dikirim ke database. Kalau kamu ganti browser atau membersihkan data
               browser, isi ulang di sini.
             </div>
 
-            {aFormError && (
-              <div style={{
-                marginTop: 10,
-                padding: '10px 14px',
-                background: 'rgba(232,64,64,0.09)',
-                border: '1px solid rgba(232,64,64,0.25)',
-                borderRadius: 8,
-                fontSize: 12,
-                color: 'var(--red)',
-              }}>
-                ❌ {aFormError}
-              </div>
-            )}
+            {aFormError && <div className="ps-form-error">❌ {aFormError}</div>}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-              <button className="refresh-btn" onClick={() => setAForm(null)} disabled={savingAnalytics}>
-                Cancel
+            <div className="ps-dialog-actions">
+              <button className="ps-btn" onClick={() => setAForm(null)} disabled={savingAnalytics}>
+                Batal
               </button>
-              <button className="gen-btn" onClick={handleSubmitAnalytics} disabled={savingAnalytics}>
+              <button className="ps-btn-gold" onClick={handleSubmitAnalytics} disabled={savingAnalytics}>
                 {savingAnalytics ? '⏳ Menyimpan...' : 'Simpan'}
               </button>
             </div>

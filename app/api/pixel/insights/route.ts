@@ -4,7 +4,9 @@
 // tidak disimpan di Supabase/localStorage/repo.
 //
 // Dua mode:
-//   ?view=overview (default)  → total, harian, per kampanye, rincian (platform/penempatan/umur/gender/perangkat)
+//   ?view=overview (default)
+//        &campaign=ID &adset=ID &ad=ID   (opsional, yang paling spesifik dipakai)
+//        → total, harian, daftar baris satu tingkat di bawah pilihan, rincian
 //   ?view=children&parent=ID&level=adset|ad → turunan satu kampanye (adset) atau satu adset (iklan)
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyAdminRequest } from '@/lib/adminAuth'
@@ -27,6 +29,15 @@ const CHECKOUT_TYPES = ['omni_initiated_checkout', 'offsite_conversion.fb_pixel_
 const PURCHASE_TYPES = ['omni_purchase', 'offsite_conversion.fb_pixel_purchase', 'purchase']
 
 const METRIC_FIELDS = 'spend,impressions,reach,actions,action_values'
+
+type ScopeLevel = 'account' | 'campaign' | 'adset' | 'ad'
+type RowLevel = 'campaign' | 'adset' | 'ad'
+
+const ROW_FIELDS: Record<RowLevel, string> = {
+  campaign: 'campaign_id,campaign_name',
+  adset: 'adset_id,adset_name',
+  ad: 'ad_id,ad_name',
+}
 
 interface ActionItem { action_type: string; value: string }
 
@@ -86,9 +97,11 @@ interface OverviewPayload {
   view: 'overview'
   range: { from: string; to: string }
   fetchedAt: number
+  scope: { level: ScopeLevel; id: string }
+  rowLevel: RowLevel
   totals: Metrics
   daily: DailyRow[]
-  campaigns: NamedRow[]
+  rows: NamedRow[]
   breakdowns: Breakdowns
   breakdownError?: string
 }
@@ -145,6 +158,18 @@ function toMetrics(r: RawRow | undefined): Metrics {
     costPerPurchase: purchases > 0 ? spend / purchases : null,
     roas: spend > 0 && purchaseValue > 0 ? purchaseValue / spend : null,
   }
+}
+
+function rowIdName(r: RawRow, level: RowLevel): { id: string; name: string } {
+  if (level === 'campaign') return { id: r.campaign_id || '', name: r.campaign_name || '(tanpa nama)' }
+  if (level === 'adset') return { id: r.adset_id || '', name: r.adset_name || '(tanpa nama)' }
+  return { id: r.ad_id || '', name: r.ad_name || '(tanpa nama)' }
+}
+
+function toNamedRows(rows: RawRow[], level: RowLevel): NamedRow[] {
+  return rows
+    .map((r) => ({ ...rowIdName(r, level), ...toMetrics(r) }))
+    .sort((a, b) => b.spend - a.spend)
 }
 
 // ── Penggabungan baris (mis. umur × gender → umur saja) ──
@@ -239,6 +264,14 @@ function rowsOf(r: FetchResult): RawRow[] {
   return 'rows' in r ? r.rows : []
 }
 
+function putCache(key: string, payload: Payload) {
+  if (cache.size >= 80) {
+    const oldest = cache.keys().next().value
+    if (oldest !== undefined) cache.delete(oldest)
+  }
+  cache.set(key, { at: Date.now(), payload })
+}
+
 export async function GET(req: NextRequest) {
   if (!(await verifyAdminRequest(req))) {
     return NextResponse.json({ error: 'Tidak diizinkan' }, { status: 401 })
@@ -279,7 +312,7 @@ export async function GET(req: NextRequest) {
   const time_range = JSON.stringify({ since: fromStr, until: toStr })
   const range = { from: fromStr, to: toStr }
 
-  // ════════════ MODE: children (adset / iklan) ════════════
+  // ════════════ MODE: children (adset / iklan, untuk buka-tutup baris tabel) ════════════
   if (sp.get('view') === 'children') {
     const parent = sp.get('parent') || ''
     const level = sp.get('level')
@@ -296,11 +329,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ...hit.payload, cached: true })
     }
 
-    const idField = level === 'adset' ? 'adset_id,adset_name' : 'ad_id,ad_name'
     const res = await fetchInsights(parent, token, {
       level,
       time_range,
-      fields: `${idField},${METRIC_FIELDS}`,
+      fields: `${ROW_FIELDS[level]},${METRIC_FIELDS}`,
     })
     if ('error' in res) {
       return NextResponse.json({ configured: true, error: res.error }, { status: 502 })
@@ -313,37 +345,54 @@ export async function GET(req: NextRequest) {
       fetchedAt: Date.now(),
       parentId: parent,
       level,
-      rows: res.rows
-        .map((r) => ({
-          id: (level === 'adset' ? r.adset_id : r.ad_id) || '',
-          name: (level === 'adset' ? r.adset_name : r.ad_name) || '(tanpa nama)',
-          ...toMetrics(r),
-        }))
-        .sort((a, b) => b.spend - a.spend),
+      rows: toNamedRows(res.rows, level),
     }
     putCache(key, payload)
     return NextResponse.json({ ...payload, cached: false })
   }
 
-  // ════════════ MODE: overview ════════════
-  const cacheKey = `${account}|overview|${fromStr}|${toStr}`
+  // ════════════ MODE: overview (dengan filter campaign / adset / iklan) ════════════
+  const campaignId = sp.get('campaign') || ''
+  const adsetId = sp.get('adset') || ''
+  const adId = sp.get('ad') || ''
+  for (const v of [campaignId, adsetId, adId]) {
+    if (v && !/^\d+$/.test(v)) {
+      return NextResponse.json({ error: 'Parameter filter tidak valid.' }, { status: 400 })
+    }
+  }
+
+  // Yang paling spesifik menang: iklan > ad set > campaign > seluruh akun
+  const scope: { level: ScopeLevel; id: string } = adId
+    ? { level: 'ad', id: adId }
+    : adsetId
+      ? { level: 'adset', id: adsetId }
+      : campaignId
+        ? { level: 'campaign', id: campaignId }
+        : { level: 'account', id: account }
+  const rowLevel: RowLevel =
+    scope.level === 'account' ? 'campaign' : scope.level === 'campaign' ? 'adset' : 'ad'
+
+  const cacheKey = `${account}|overview|${scope.level}:${scope.id}|${fromStr}|${toStr}`
   const hit = cache.get(cacheKey)
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
     return NextResponse.json({ ...hit.payload, cached: true })
   }
 
-  const [summary, daily, campaigns, platform, placement, ageGender, device] = await Promise.all([
-    fetchInsights(account, token, { level: 'account', time_range, fields: METRIC_FIELDS }),
-    fetchInsights(account, token, { level: 'account', time_range, time_increment: '1', fields: METRIC_FIELDS }),
-    fetchInsights(account, token, { level: 'campaign', time_range, fields: `campaign_id,campaign_name,${METRIC_FIELDS}` }),
-    fetchInsights(account, token, { level: 'account', time_range, breakdowns: 'publisher_platform', fields: METRIC_FIELDS }),
-    fetchInsights(account, token, { level: 'account', time_range, breakdowns: 'publisher_platform,platform_position', fields: METRIC_FIELDS }),
-    fetchInsights(account, token, { level: 'account', time_range, breakdowns: 'age,gender', fields: METRIC_FIELDS }),
-    fetchInsights(account, token, { level: 'account', time_range, breakdowns: 'device_platform', fields: METRIC_FIELDS }),
+  const base = { time_range, fields: METRIC_FIELDS }
+  const lvl = scope.level
+
+  const [summary, daily, listing, platform, placement, ageGender, device] = await Promise.all([
+    fetchInsights(scope.id, token, { level: lvl, ...base }),
+    fetchInsights(scope.id, token, { level: lvl, ...base, time_increment: '1' }),
+    fetchInsights(scope.id, token, { level: rowLevel, time_range, fields: `${ROW_FIELDS[rowLevel]},${METRIC_FIELDS}` }),
+    fetchInsights(scope.id, token, { level: lvl, ...base, breakdowns: 'publisher_platform' }),
+    fetchInsights(scope.id, token, { level: lvl, ...base, breakdowns: 'publisher_platform,platform_position' }),
+    fetchInsights(scope.id, token, { level: lvl, ...base, breakdowns: 'age,gender' }),
+    fetchInsights(scope.id, token, { level: lvl, ...base, breakdowns: 'device_platform' }),
   ])
 
   // Tiga panggilan inti harus berhasil
-  for (const r of [summary, daily, campaigns]) {
+  for (const r of [summary, daily, listing]) {
     if ('error' in r) {
       return NextResponse.json({ configured: true, error: r.error }, { status: 502 })
     }
@@ -363,18 +412,14 @@ export async function GET(req: NextRequest) {
     view: 'overview',
     range,
     fetchedAt: Date.now(),
+    scope,
+    rowLevel,
     totals: toMetrics(rowsOf(summary)[0]),
     daily: rowsOf(daily)
       .filter((r) => !!r.date_start)
       .map((r) => ({ date: r.date_start as string, ...toMetrics(r) }))
       .sort((a, b) => a.date.localeCompare(b.date)),
-    campaigns: rowsOf(campaigns)
-      .map((r) => ({
-        id: r.campaign_id || '',
-        name: r.campaign_name || '(tanpa nama)',
-        ...toMetrics(r),
-      }))
-      .sort((a, b) => b.spend - a.spend),
+    rows: toNamedRows(rowsOf(listing), rowLevel),
     breakdowns: {
       platform: toLabelRows(rowsOf(platform), (r) => r.publisher_platform || 'unknown'),
       placement: toLabelRows(rowsOf(placement), (r) => `${r.publisher_platform || 'unknown'} · ${r.platform_position || 'unknown'}`),
@@ -387,12 +432,4 @@ export async function GET(req: NextRequest) {
 
   putCache(cacheKey, payload)
   return NextResponse.json({ ...payload, cached: false })
-}
-
-function putCache(key: string, payload: Payload) {
-  if (cache.size >= 60) {
-    const oldest = cache.keys().next().value
-    if (oldest !== undefined) cache.delete(oldest)
-  }
-  cache.set(key, { at: Date.now(), payload })
 }

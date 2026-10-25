@@ -92,7 +92,7 @@ export default function AdminApp() {
           <div style={{ display: activeTab === 'pixel' ? 'block' : 'none' }}>
             <SubTabBar
               tabs={[
-                { id: 'settings', label: 'Pengaturan'    },
+                { id: 'settings', label: 'Pengaturan Pixel' },
                 { id: 'meta',     label: 'Analitik Meta' },
               ]}
               active={pixelSubTab}

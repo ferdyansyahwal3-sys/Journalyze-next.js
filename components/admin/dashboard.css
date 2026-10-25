@@ -535,3 +535,19 @@
   .admin-root .lp-dp-btn { width: 100%; min-width: 0; }
   .admin-root .lp-dp-pop { left: 0; right: 0; width: auto; }
 }
+
+/* Penanda "i" kecil di kartu penjualan (keterangan muncul saat kursor diarahkan) */
+.admin-root .lp-info {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; margin-left: 8px; border-radius: 50%; cursor: help;
+  border: 1px solid var(--gold-bd2); color: var(--gold2);
+  font-family: var(--font-cormorant, 'Cormorant Garamond', serif); font-size: 11px; font-weight: 700; font-style: italic;
+  vertical-align: 1px;
+}
+.admin-root .lp-info:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* Jarak angka total penjualan ke keterangan di bawahnya */
+.admin-root .lp-hero-val.money { margin: 12px 0 16px; }
+
+/* Jarak angka ke keterangan di 4 kartu bawah chart (khusus Dashboard) */
+.admin-root .lp-dash .a-card-sub { margin-top: 14px; }

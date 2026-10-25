@@ -2,11 +2,14 @@
 // Sub-halaman "Analitik Meta" di tab Pixel — murni data dari Meta Marketing API.
 // Angka diambil dari /api/pixel/insights (server); token Meta TIDAK ada di browser.
 // Tampilan selalu muncul penuh: bila belum ada data, angka 0 / "—" dan grafik kosong.
+// Filter tanggal memakai DateRangePicker yang sama dengan Dashboard.
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { _sb } from '@/lib/supabaseClient';
+import DateRangePicker, { currentMonthRange } from './DateRangePicker';
+import type { DateRange } from './DateRangePicker';
 import './dashboard.css';
 import './meta-analytics.css';
 
@@ -39,29 +42,31 @@ interface Breakdowns {
   gender: LabelRow[];
   device: LabelRow[];
 }
+type RowLevel = 'campaign' | 'adset' | 'ad';
 interface Overview {
   configured: true;
   view: 'overview';
   range: { from: string; to: string };
   fetchedAt: number;
   cached: boolean;
+  rowLevel: RowLevel;
   totals: Metrics;
   daily: DailyRow[];
-  campaigns: NamedRow[];
+  rows: NamedRow[];
   breakdowns: Breakdowns;
   breakdownError?: string;
 }
 interface ChildrenResp { configured: true; view: 'children'; rows: NamedRow[] }
 interface NotConfigured { configured: false; missing: string[]; invalid: string[] }
+interface Sel { campaign: string; adset: string; ad: string }
 
-type Preset = '7' | '14' | '30' | '90' | 'custom';
 type ChartMetric = 'spend' | 'impressions' | 'linkClicks' | 'purchases';
-type RowLevel = 'campaign' | 'adset' | 'ad';
 type KidsState = { status: 'loading' | 'ok' | 'error'; rows: NamedRow[]; error?: string };
 
 // ── Helper ──────────────────────────────────────────────────────────────────
 const TZ = 'Asia/Jakarta';
 const MAX_RANGE_DAYS = 93;
+const NO_SEL: Sel = { campaign: '', adset: '', ad: '' };
 
 const EMPTY: Metrics = {
   spend: 0, impressions: 0, reach: 0, frequency: 0, cpm: null, linkClicks: 0, ctr: 0, cpc: null,
@@ -130,13 +135,17 @@ const METRIC_LABEL: Record<ChartMetric, string> = {
   linkClicks: 'Klik link',
   purchases: 'Pembelian',
 };
+const ROW_TITLE: Record<RowLevel, string> = { campaign: 'Kampanye', adset: 'Ad set', ad: 'Iklan' };
 
 // ── Komponen ────────────────────────────────────────────────────────────────
 export default function MetaAnalyticsPanel({ active }: { active: boolean }) {
-  const [preset, setPreset] = useState<Preset>('30');
-  const [customFrom, setCustomFrom] = useState(() => dayKey(Date.now() - 29 * 86400000));
-  const [customTo, setCustomTo] = useState(() => dayKey(Date.now()));
+  const [range, setRange] = useState<DateRange>(() => currentMonthRange()); // default sama dengan Dashboard
   const [metric, setMetric] = useState<ChartMetric>('spend');
+
+  const [sel, setSel] = useState<Sel>(NO_SEL);
+  const [campaignOpts, setCampaignOpts] = useState<NamedRow[]>([]);
+  const [adsetOpts, setAdsetOpts] = useState<NamedRow[]>([]);
+  const [adOpts, setAdOpts] = useState<NamedRow[]>([]);
 
   const [data, setData] = useState<Overview | null>(null);
   const [setup, setSetup] = useState<NotConfigured | null>(null);
@@ -148,29 +157,32 @@ export default function MetaAnalyticsPanel({ active }: { active: boolean }) {
   const [kids, setKids] = useState<Record<string, KidsState>>({});
   const reqId = useRef(0);
 
-  const range = useMemo(() => {
-    if (preset === 'custom') {
-      const asc = customFrom <= customTo;
-      return { from: asc ? customFrom : customTo, to: asc ? customTo : customFrom };
-    }
-    const n = Number(preset);
-    return { from: dayKey(Date.now() - (n - 1) * 86400000), to: dayKey(Date.now()) };
-  }, [preset, customFrom, customTo]);
-
-  const rangeDays = useMemo(() => daysBetween(range.from, range.to).length, [range]);
+  // Rentang efektif: tanggal akhir dipotong sampai hari ini (Meta tidak punya data masa depan)
+  const eff = useMemo(() => {
+    const today = dayKey(Date.now());
+    return { from: range.from, to: range.to > today ? today : range.to };
+  }, [range]);
+  const future = eff.from > eff.to;
+  const rangeDays = useMemo(() => (future ? 0 : daysBetween(eff.from, eff.to).length), [eff, future]);
   const tooLong = rangeDays > MAX_RANGE_DAYS;
 
   const load = useCallback(async () => {
     if (tooLong) return;
+    if (future) {
+      setError('Seluruh rentang tanggal ada di masa depan, belum ada data.');
+      return;
+    }
     const id = ++reqId.current;
     setLoading(true);
     setError('');
     try {
       const headers = await authHeader();
-      const res = await fetch(`/api/pixel/insights?from=${range.from}&to=${range.to}`, {
-        headers,
-        cache: 'no-store',
-      });
+      const params = new URLSearchParams({ from: eff.from, to: eff.to });
+      if (sel.campaign) params.set('campaign', sel.campaign);
+      if (sel.adset) params.set('adset', sel.adset);
+      if (sel.ad) params.set('ad', sel.ad);
+
+      const res = await fetch(`/api/pixel/insights?${params.toString()}`, { headers, cache: 'no-store' });
       const json = (await res.json()) as Record<string, unknown>;
       if (id !== reqId.current) return; // ada permintaan yang lebih baru
 
@@ -180,8 +192,13 @@ export default function MetaAnalyticsPanel({ active }: { active: boolean }) {
       } else if (!res.ok || typeof json.error === 'string') {
         throw new Error(typeof json.error === 'string' ? json.error : `Gagal memuat (HTTP ${res.status})`);
       } else {
+        const ov = json as unknown as Overview;
         setSetup(null);
-        setData(json as unknown as Overview);
+        setData(ov);
+        // Isi pilihan filter sesuai tingkat baris yang baru dimuat
+        if (ov.rowLevel === 'campaign') setCampaignOpts(ov.rows);
+        else if (ov.rowLevel === 'adset') setAdsetOpts(ov.rows);
+        else if (!sel.ad) setAdOpts(ov.rows);
       }
       setExpanded({});
       setKids({});
@@ -190,7 +207,7 @@ export default function MetaAnalyticsPanel({ active }: { active: boolean }) {
     } finally {
       if (id === reqId.current) setLoading(false);
     }
-  }, [range, tooLong]);
+  }, [eff, sel, tooLong, future]);
 
   useEffect(() => {
     if (!active) return;
@@ -203,7 +220,7 @@ export default function MetaAnalyticsPanel({ active }: { active: boolean }) {
       try {
         const headers = await authHeader();
         const res = await fetch(
-          `/api/pixel/insights?view=children&parent=${parentId}&level=${level}&from=${range.from}&to=${range.to}`,
+          `/api/pixel/insights?view=children&parent=${parentId}&level=${level}&from=${eff.from}&to=${eff.to}`,
           { headers, cache: 'no-store' }
         );
         const json = (await res.json()) as Record<string, unknown>;
@@ -215,7 +232,7 @@ export default function MetaAnalyticsPanel({ active }: { active: boolean }) {
         setKids((k) => ({ ...k, [key]: { status: 'error', rows: [], error: errMsg(e) } }));
       }
     },
-    [range]
+    [eff]
   );
 
   const toggleRow = (level: RowLevel, row: NamedRow) => {
@@ -226,20 +243,47 @@ export default function MetaAnalyticsPanel({ active }: { active: boolean }) {
     if (willOpen && !kids[key]) loadKids(key, row.id, level === 'campaign' ? 'adset' : 'ad');
   };
 
+  // ── Handler filter ──
+  const resetAll = () => {
+    setSel(NO_SEL);
+    setCampaignOpts([]);
+    setAdsetOpts([]);
+    setAdOpts([]);
+  };
+  const onRangeChange = (r: DateRange) => {
+    setRange(r);
+    resetAll(); // pilihan lama mungkin tidak ada di rentang baru
+  };
+  const onCampaign = (id: string) => {
+    setSel({ campaign: id, adset: '', ad: '' });
+    setAdsetOpts([]);
+    setAdOpts([]);
+  };
+  const onAdset = (id: string) => {
+    setSel((s) => ({ ...s, adset: id, ad: '' }));
+    setAdOpts([]);
+  };
+  const onAd = (id: string) => setSel((s) => ({ ...s, ad: id }));
+
+  const nameOf = (list: NamedRow[], id: string) => list.find((o) => o.id === id)?.name ?? id;
+
   // ── Turunan data (aman saat data masih kosong) ──
   const t = data?.totals ?? EMPTY;
   const bd = data?.breakdowns ?? EMPTY_BREAKDOWNS;
-  const campaigns = data?.campaigns ?? [];
-  const rangeLabel = `${fmtDayShort(range.from)} – ${fmtDayShort(range.to)} · ${rangeDays} hari`;
+  const rows = data?.rows ?? [];
+  const rowLevel: RowLevel = data?.rowLevel ?? 'campaign';
+  const pickedDays = daysBetween(range.from, range.to).length;
+  const rangeLabel = `${fmtDayShort(range.from)} – ${fmtDayShort(range.to)} · ${pickedDays} hari`;
+  const clamped = !future && eff.to !== range.to;
 
   const series = useMemo(() => {
     const map = new Map<string, DailyRow>();
     (data?.daily ?? []).forEach((d) => map.set(d.date, d));
-    return daysBetween(range.from, range.to).map((day) => ({
+    return (future ? [] : daysBetween(eff.from, eff.to)).map((day) => ({
       day,
       value: map.get(day)?.[metric] ?? 0,
     }));
-  }, [data, metric, range]);
+  }, [data, metric, eff, future]);
 
   const maxVal = useMemo(() => Math.max(0, ...series.map((s) => s.value)), [series]);
   const seriesTotal = useMemo(() => series.reduce((a, s) => a + s.value, 0), [series]);
@@ -254,6 +298,11 @@ export default function MetaAnalyticsPanel({ active }: { active: boolean }) {
     { label: 'Pembelian', value: t.purchases, color: 'gold' },
   ];
   const funnelMax = Math.max(1, ...funnel.map((f) => f.value));
+
+  const scopeParts: string[] = [];
+  if (sel.campaign) scopeParts.push(`Campaign: ${nameOf(campaignOpts, sel.campaign)}`);
+  if (sel.adset) scopeParts.push(`Ad set: ${nameOf(adsetOpts, sel.adset)}`);
+  if (sel.ad) scopeParts.push(`Iklan: ${nameOf(adOpts, sel.ad)}`);
 
   // ── Baris tabel (rekursif: kampanye → adset → iklan) ──
   const renderRow = (row: NamedRow, level: RowLevel, depth: number): ReactNode[] => {
@@ -274,7 +323,7 @@ export default function MetaAnalyticsPanel({ active }: { active: boolean }) {
         <td className="ma-name" style={{ paddingLeft: 12 + depth * 22 }}>
           {canOpen ? <span className="ma-caret">{open ? '▾' : '▸'}</span> : <span className="ma-caret" />}
           {row.name}
-          <span className="ma-kind">{level === 'campaign' ? 'Kampanye' : level === 'adset' ? 'Ad set' : 'Iklan'}</span>
+          <span className="ma-kind">{ROW_TITLE[level]}</span>
         </td>
         <MetricCells m={row} />
       </tr>
@@ -284,12 +333,13 @@ export default function MetaAnalyticsPanel({ active }: { active: boolean }) {
       const st = kids[key];
       const colSpan = 13;
       const childLevel: RowLevel = level === 'campaign' ? 'adset' : 'ad';
+      const pad = 34 + depth * 22;
       if (!st || st.status === 'loading') {
-        out.push(<tr key={`${key}:l`}><td className="ma-sub-msg" colSpan={colSpan} style={{ paddingLeft: 34 + depth * 22 }}>Memuat…</td></tr>);
+        out.push(<tr key={`${key}:l`}><td className="ma-sub-msg" colSpan={colSpan} style={{ paddingLeft: pad }}>Memuat…</td></tr>);
       } else if (st.status === 'error') {
-        out.push(<tr key={`${key}:e`}><td className="ma-sub-msg err" colSpan={colSpan} style={{ paddingLeft: 34 + depth * 22 }}>Gagal memuat: {st.error}</td></tr>);
+        out.push(<tr key={`${key}:e`}><td className="ma-sub-msg err" colSpan={colSpan} style={{ paddingLeft: pad }}>Gagal memuat: {st.error}</td></tr>);
       } else if (st.rows.length === 0) {
-        out.push(<tr key={`${key}:0`}><td className="ma-sub-msg" colSpan={colSpan} style={{ paddingLeft: 34 + depth * 22 }}>Tidak ada data pada rentang ini.</td></tr>);
+        out.push(<tr key={`${key}:0`}><td className="ma-sub-msg" colSpan={colSpan} style={{ paddingLeft: pad }}>Tidak ada data pada rentang ini.</td></tr>);
       } else {
         st.rows.forEach((c) => out.push(...renderRow(c, childLevel, depth + 1)));
       }
@@ -299,7 +349,7 @@ export default function MetaAnalyticsPanel({ active }: { active: boolean }) {
 
   // ── Render ──
   return (
-    <div className={`main lp-dash ma-wrap${loading && !data ? ' ma-loading' : ''}`}>
+    <div className={`main lp-dash ma-wrap${loading ? ' ma-loading' : ''}`}>
       {/* Header */}
       <div className="lp-head">
         <div>
@@ -310,29 +360,46 @@ export default function MetaAnalyticsPanel({ active }: { active: boolean }) {
           </p>
         </div>
         <div className="lp-range">
-          <select
-            className="filter-select"
-            value={preset}
-            onChange={(e) => setPreset(e.target.value as Preset)}
-            aria-label="Rentang tanggal"
-          >
-            <option value="7">7 hari terakhir</option>
-            <option value="14">14 hari terakhir</option>
-            <option value="30">30 hari terakhir</option>
-            <option value="90">90 hari terakhir</option>
-            <option value="custom">Pilih tanggal…</option>
-          </select>
-          {preset === 'custom' && (
-            <>
-              <input type="date" value={customFrom} max={customTo} onChange={(e) => setCustomFrom(e.target.value)} aria-label="Dari tanggal" />
-              <input type="date" value={customTo} min={customFrom} max={dayKey(Date.now())} onChange={(e) => setCustomTo(e.target.value)} aria-label="Sampai tanggal" />
-            </>
-          )}
+          <DateRangePicker from={range.from} to={range.to} onChange={onRangeChange} />
           <button className="refresh-btn" onClick={load} disabled={loading || tooLong}>
             {loading ? <><span className="spinner" />Memuat...</> : '↻ Refresh'}
           </button>
         </div>
       </div>
+
+      {/* Filter campaign → ad set → iklan (menyala setelah data muncul) */}
+      <div className="ma-filters">
+        <FilterSelect
+          label="Campaign"
+          allLabel="Semua campaign"
+          value={sel.campaign}
+          options={campaignOpts}
+          disabled={!data || campaignOpts.length === 0}
+          onChange={onCampaign}
+        />
+        <FilterSelect
+          label="Ad set"
+          allLabel="Semua ad set"
+          value={sel.adset}
+          options={adsetOpts}
+          disabled={!sel.campaign || adsetOpts.length === 0}
+          onChange={onAdset}
+        />
+        <FilterSelect
+          label="Iklan"
+          allLabel="Semua iklan"
+          value={sel.ad}
+          options={adOpts}
+          disabled={!sel.adset || adOpts.length === 0}
+          onChange={onAd}
+        />
+        {sel.campaign && (
+          <button className="lp-chip" onClick={resetAll}>Reset filter</button>
+        )}
+      </div>
+      {scopeParts.length > 0 && (
+        <div className="ma-scope">Menampilkan data untuk <b>{scopeParts.join(' › ')}</b></div>
+      )}
 
       {tooLong && <div className="lp-error">Rentang maksimal {MAX_RANGE_DAYS} hari. Persempit tanggalnya.</div>}
       {error && <div className="lp-error">{error}</div>}
@@ -400,6 +467,9 @@ export default function MetaAnalyticsPanel({ active }: { active: boolean }) {
             <div className="lp-hero-lbl">Biaya iklan</div>
             <div className="lp-hero-val money">{nf(t.spend)}</div>
             <div className="lp-hero-sub">{rangeLabel}</div>
+            {clamped && (
+              <div className="lp-hero-sub ma-hero-note">Data tersedia sampai {fmtDayShort(eff.to)} (hari ini)</div>
+            )}
           </div>
           <div>
             <div className="lp-hero-row"><span>Pembelian</span><b>{nfInt(t.purchases)}</b></div>
@@ -505,10 +575,14 @@ export default function MetaAnalyticsPanel({ active }: { active: boolean }) {
         <BreakdownCard title="Gender" rows={bd.gender} />
       </div>
 
-      {/* Tabel kampanye dengan drill-down */}
+      {/* Tabel dengan drill-down */}
       <div className="lp-card ma-table-card">
-        <div className="lp-card-title">Kampanye, ad set &amp; iklan</div>
-        <p className="ma-note" style={{ marginTop: 0 }}>Klik baris kampanye untuk melihat ad set, lalu klik ad set untuk melihat iklannya.</p>
+        <div className="lp-card-title">{ROW_TITLE[rowLevel]}</div>
+        <p className="ma-note" style={{ marginTop: 0 }}>
+          {rowLevel === 'campaign' && 'Klik baris kampanye untuk melihat ad set, lalu klik ad set untuk melihat iklannya.'}
+          {rowLevel === 'adset' && 'Klik baris ad set untuk melihat iklannya.'}
+          {rowLevel === 'ad' && 'Daftar iklan sesuai filter yang dipilih.'}
+        </p>
         <div className="ma-table-wrap">
           <table className="ma-table">
             <thead>
@@ -529,10 +603,10 @@ export default function MetaAnalyticsPanel({ active }: { active: boolean }) {
               </tr>
             </thead>
             <tbody>
-              {campaigns.length === 0 ? (
-                <tr><td className="ma-sub-msg" colSpan={13} style={{ textAlign: 'center', padding: '28px 12px' }}>Belum ada kampanye dengan data pada rentang ini.</td></tr>
+              {rows.length === 0 ? (
+                <tr><td className="ma-sub-msg" colSpan={13} style={{ textAlign: 'center', padding: '28px 12px' }}>Belum ada data pada rentang ini.</td></tr>
               ) : (
-                campaigns.flatMap((c) => renderRow(c, 'campaign', 0))
+                rows.flatMap((c) => renderRow(c, rowLevel, 0))
               )}
             </tbody>
             <tfoot>
@@ -556,6 +630,37 @@ export default function MetaAnalyticsPanel({ active }: { active: boolean }) {
 }
 
 // ── Sub-komponen ────────────────────────────────────────────────────────────
+function FilterSelect({
+  label, allLabel, value, options, disabled, onChange,
+}: {
+  label: string;
+  allLabel: string;
+  value: string;
+  options: NamedRow[];
+  disabled: boolean;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <label className={`lp-chip lp-select ma-filter${disabled ? ' disabled' : ''}`}>
+      <span>{label}:</span>
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={label}
+      >
+        <option value="">{allLabel}{options.length > 0 ? ` (${options.length})` : ''}</option>
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>{o.name}</option>
+        ))}
+      </select>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M6 9l6 6 6-6" />
+      </svg>
+    </label>
+  );
+}
+
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="ma-stat">

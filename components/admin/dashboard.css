@@ -440,3 +440,98 @@
   .admin-root .lp-src-scroll { max-height: 520px; }
   .admin-root .lp-src-scroll tbody tr { height: auto; }
 }
+
+
+/* ══════════════════════════════════════════════════════
+   TAMBAHAN v6 — tanggal sumbu-X penuh (2 baris, ala Lynk)
+══════════════════════════════════════════════════════ */
+.admin-root .lp-xl { flex-direction: column; align-items: center; gap: 2px; line-height: 1.2; }
+.admin-root .lp-xl .d { font-size: 11px; color: var(--text2); }
+.admin-root .lp-xl .m { font-size: 9px; }
+.admin-root .lp-empty-overlay code {
+  font-family: var(--font-jetbrains, 'JetBrains Mono', monospace); font-size: 11px; color: var(--gold2);
+}
+
+@media (max-width: 1023px) {
+  /* di HP, rentang panjang: tampilkan tiap 3 hari agar tidak bertabrakan */
+  .admin-root .lp-xaxis[data-dense="1"] .lp-xl:not(:nth-child(3n+1)) > span { visibility: hidden; }
+}
+
+
+/* ══════════════════════════════════════════════════════
+   TAMBAHAN v7 — pemilih rentang tanggal (klik awal → akhir)
+══════════════════════════════════════════════════════ */
+.admin-root .lp-dp { position: relative; }
+.admin-root .lp-dp-btn {
+  display: inline-flex; align-items: center; gap: 10px; min-width: 250px;
+  background: var(--input-bg); border: 1px solid var(--border); color: var(--text);
+  border-radius: 10px; padding: 10px 14px; cursor: pointer; transition: all .2s;
+  font-family: var(--font-jetbrains, 'JetBrains Mono', monospace); font-size: 12px;
+}
+.admin-root .lp-dp-btn svg { color: var(--gold2); flex-shrink: 0; }
+.admin-root .lp-dp-btn:hover,
+.admin-root .lp-dp-btn.open { border-color: var(--gold-bd2); background: var(--gold-bg); }
+.admin-root .lp-dp-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+.admin-root .lp-dp-pop {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; width: 330px;
+  background: var(--bg2); border: 1px solid var(--gold-bd2); border-radius: 16px;
+  padding: 14px; box-shadow: var(--shadow);
+}
+.admin-root .lp-dp-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.admin-root .lp-dp-preset {
+  background: var(--input-bg); border: 1px solid var(--border); color: var(--text2);
+  border-radius: 99px; padding: 5px 12px; cursor: pointer; transition: all .2s;
+  font-family: var(--font-outfit, 'Outfit', sans-serif); font-size: 11px; font-weight: 600;
+}
+.admin-root .lp-dp-preset:hover { border-color: var(--gold-bd2); color: var(--gold2); background: var(--gold-bg); }
+.admin-root .lp-dp-preset:focus-visible,
+.admin-root .lp-dp-nav:focus-visible,
+.admin-root .lp-dp-day:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+
+.admin-root .lp-dp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.admin-root .lp-dp-title {
+  font-family: var(--font-cormorant, 'Cormorant Garamond', serif);
+  font-size: 20px; font-weight: 700; color: var(--text);
+}
+.admin-root .lp-dp-nav {
+  width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid var(--border); color: var(--text2);
+  border-radius: 10px; cursor: pointer; transition: all .2s;
+}
+.admin-root .lp-dp-nav:hover { border-color: var(--gold-bd2); color: var(--gold2); background: var(--gold-bg); }
+
+.admin-root .lp-dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 2px; }
+.admin-root .lp-dp-wd span {
+  text-align: center; padding: 6px 0;
+  font-family: var(--font-jetbrains, 'JetBrains Mono', monospace);
+  font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--text3);
+}
+.admin-root .lp-dp-day {
+  position: relative; height: 36px; border: none; background: transparent; color: var(--text2);
+  font-family: var(--font-outfit, 'Outfit', sans-serif); font-size: 13px; font-weight: 500;
+  cursor: pointer; border-radius: 0; transition: background .12s, color .12s;
+}
+.admin-root .lp-dp-day:hover { background: rgba(255,255,255,0.06); border-radius: 10px; color: var(--text); }
+.admin-root .lp-dp-day.in { background: rgba(201,168,76,0.14); color: var(--gold3); }
+.admin-root .lp-dp-day.start,
+.admin-root .lp-dp-day.end {
+  background: linear-gradient(135deg, var(--gold), var(--gold2)); color: #080808; font-weight: 700;
+}
+.admin-root .lp-dp-day.start { border-radius: 99px 0 0 99px; }
+.admin-root .lp-dp-day.end { border-radius: 0 99px 99px 0; }
+.admin-root .lp-dp-day.start.end { border-radius: 99px; }
+.admin-root .lp-dp-day.today:not(.start):not(.end)::after {
+  content: ''; position: absolute; left: 50%; bottom: 4px; width: 4px; height: 4px;
+  border-radius: 50%; background: var(--gold); transform: translateX(-50%);
+}
+.admin-root .lp-dp-foot {
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border2);
+  font-size: 11px; color: var(--text3); text-align: center;
+}
+
+@media (max-width: 1023px) {
+  .admin-root .lp-dp { width: 100%; }
+  .admin-root .lp-dp-btn { width: 100%; min-width: 0; }
+  .admin-root .lp-dp-pop { left: 0; right: 0; width: auto; }
+}

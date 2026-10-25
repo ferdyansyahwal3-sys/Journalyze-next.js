@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { _sbAdmin } from '@/lib/supabaseClient';
 import { useAdminStore } from '@/store/useAdminStore';
+import DateRangePicker, { currentMonthRange } from './DateRangePicker';
 import './dashboard.css';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -17,6 +18,7 @@ interface LandingEvent {
   affiliate_code: string | null;
   utm_source: string | null;
   utm_medium: string | null;
+  utm_campaign: string | null;
   referrer: string | null;
   plan_type: string | null;
   device: string | null;
@@ -36,9 +38,8 @@ interface Ref {
   status: string;
 }
 
-type Preset = '7' | '14' | '30' | '90' | 'custom';
-type Mode = 'all' | 'main' | 'affiliate';
-type SourceGroup = 'Affiliate' | 'Web utama' | 'Sosial media' | 'Kampanye lain' | 'Situs lain';
+type Mode = 'all' | 'main' | 'affiliate' | 'meta';
+type SourceGroup = 'Meta Ads' | 'Affiliate' | 'Web utama' | 'Sosial media' | 'Kampanye lain' | 'Situs lain';
 
 interface SourceRow {
   label: string;
@@ -65,6 +66,7 @@ const MODES: { id: Mode; label: string }[] = [
   { id: 'all',       label: 'Gabungan' },
   { id: 'main',      label: 'LP Utama' },
   { id: 'affiliate', label: 'Affiliate' },
+  { id: 'meta',      label: 'Meta Ads' },
 ];
 
 const nf = (n: number) => n.toLocaleString('id-ID');
@@ -92,6 +94,10 @@ function fmtDayShort(key: string): string {
     day: 'numeric', month: 'short', timeZone: 'UTC',
   });
 }
+
+const dayNum = (key: string) => String(Number(key.slice(8, 10)));
+const monthShort = (key: string) =>
+  new Date(key + 'T12:00:00Z').toLocaleDateString('id-ID', { month: 'short', timeZone: 'UTC' });
 
 function niceStep(x: number): number {
   const p = Math.pow(10, Math.floor(Math.log10(x)));
@@ -128,8 +134,31 @@ function platformOf(s: string): string | null {
   return null;
 }
 
+/** Iklan Meta = UTM sumber Meta/Facebook/Instagram DAN medium berbayar (paid/cpc/ads).
+ *  Link lama seperti ig / social sengaja tidak dianggap iklan. */
+function isMetaAd(e: LandingEvent): boolean {
+  const src = (e.utm_source ?? '').trim().toLowerCase();
+  const med = (e.utm_medium ?? '').trim().toLowerCase();
+  const metaSource =
+    src === 'fb' || src === 'ig' || src.startsWith('meta') || src.includes('facebook') || src.includes('instagram');
+  const paidMedium = /^(paid|cpc|ppc|ads?|paid[-_ ]?social|paidsocial)$/.test(med);
+  return metaSource && paidMedium;
+}
+
+/** Satu kunjungan hanya masuk satu kelompok: Meta Ads > Affiliate > LP Utama */
+function inMode(e: LandingEvent, m: Mode): boolean {
+  if (m === 'all') return true;
+  const meta = isMetaAd(e);
+  if (m === 'meta') return meta;
+  if (m === 'affiliate') return !meta && !!e.affiliate_code;
+  return !meta && !e.affiliate_code;
+}
+
 function sourceOf(e: LandingEvent): { label: string; group: SourceGroup } {
-  // 1) Kode affiliate selalu menang, satu baris per kode
+  // 0) Iklan Meta (UTM berbayar) menang, satu baris per nama kampanye
+  if (isMetaAd(e)) return { label: (e.utm_campaign ?? '').trim() || 'Tanpa nama kampanye', group: 'Meta Ads' };
+
+  // 1) Kode affiliate, satu baris per kode
   if (e.affiliate_code) return { label: e.affiliate_code, group: 'Affiliate' };
 
   // 2) UTM dari link kampanye
@@ -151,7 +180,7 @@ async function fetchEvents(fromIso: string, toIso: string): Promise<LandingEvent
   for (let p = 0; p < 30; p++) {
     const { data, error } = await _sbAdmin
       .from('landing_events')
-      .select('created_at,event_type,session_id,affiliate_code,utm_source,utm_medium,referrer,plan_type,device')
+      .select('created_at,event_type,session_id,affiliate_code,utm_source,utm_medium,utm_campaign,referrer,plan_type,device')
       .gte('created_at', fromIso)
       .lte('created_at', toIso)
       .order('created_at', { ascending: true })
@@ -184,9 +213,7 @@ async function fetchAllTable<T>(table: string, columns: string): Promise<T[]> {
 export default function DashboardPanel({ active }: { active: boolean }) {
   const showToast = useAdminStore((s) => s.showToast);
 
-  const [preset, setPreset] = useState<Preset>('30');
-  const [customFrom, setCustomFrom] = useState(() => dayKey(Date.now() - 29 * 86400000));
-  const [customTo, setCustomTo] = useState(() => dayKey(Date.now()));
+  const [range, setRange] = useState(() => currentMonthRange()); // default: bulan berjalan, 1 s/d akhir bulan
   const [mode, setMode] = useState<Mode>('all');
   const [hideMoney, setHideMoney] = useState(false);
 
@@ -198,14 +225,6 @@ export default function DashboardPanel({ active }: { active: boolean }) {
   const [errorEvents, setErrorEvents] = useState('');
   const [errorMoney, setErrorMoney] = useState('');
 
-  const range = useMemo(() => {
-    if (preset === 'custom') {
-      const asc = customFrom <= customTo;
-      return { from: asc ? customFrom : customTo, to: asc ? customTo : customFrom };
-    }
-    const n = Number(preset);
-    return { from: dayKey(Date.now() - (n - 1) * 86400000), to: dayKey(Date.now()) };
-  }, [preset, customFrom, customTo]);
 
   // Trafik: ikut rentang tanggal
   const loadEvents = useCallback(async () => {
@@ -257,11 +276,11 @@ export default function DashboardPanel({ active }: { active: boolean }) {
     () =>
       events
         .filter((e) => !DEV_HOST_RE.test(hostOf(e.referrer))) // buang kunjungan tes (localhost / Vercel)
-        .filter((e) => (mode === 'all' ? true : mode === 'main' ? !e.affiliate_code : !!e.affiliate_code)),
+        .filter((e) => inMode(e, mode)),
     [events, mode]
   );
   const filteredTxs = useMemo(
-    () => txs.filter((t) => (mode === 'all' ? true : mode === 'main' ? !t.affiliate_code : !!t.affiliate_code)),
+    () => txs.filter((t) => (mode === 'all' ? true : mode === 'main' ? !t.affiliate_code : mode === 'affiliate' ? !!t.affiliate_code : false)),
     [txs, mode]
   );
 
@@ -335,6 +354,7 @@ export default function DashboardPanel({ active }: { active: boolean }) {
   }, [txs, refs, filteredTxs]);
 
   const rp = (n: number) => (hideMoney ? 'Rp ••••••' : fmtRp(n));
+  const moneyAvailable = mode !== 'meta'; // order belum menyimpan sumber trafik, jadi tidak bisa dipisah per iklan
 
   const copy = (text: string) => {
     navigator.clipboard.writeText(text)
@@ -343,7 +363,7 @@ export default function DashboardPanel({ active }: { active: boolean }) {
   };
 
   const hasData = data.views > 0 || data.clicks > 0;
-  const tickEvery = Math.max(1, Math.ceil(data.series.length / 10));
+  const tickEvery = data.series.length <= 31 ? 1 : Math.ceil(data.series.length / 30);
   const planMax = Math.max(...Object.values(data.plans), 1);
   const deviceTotal = data.devices.mobile + data.devices.desktop;
 
@@ -453,10 +473,16 @@ export default function DashboardPanel({ active }: { active: boolean }) {
                 </svg>
               </button>
             </div>
-            <div className="lp-hero-val money">{loadingMoney && !txs.length ? '…' : rp(money.sales)}</div>
+            <div className="lp-hero-val money">{!moneyAvailable ? '—' : loadingMoney && !txs.length ? '…' : rp(money.sales)}</div>
             <div className="lp-hero-sub">
-              {nf(money.orders)} order sejak awal
-              {money.estimates > 0 && ` · ${nf(money.estimates)} order lama berupa perkiraan`}
+              {moneyAvailable ? (
+                <>
+                  {nf(money.orders)} order sejak awal
+                  {money.estimates > 0 && ` · ${nf(money.estimates)} order lama berupa perkiraan`}
+                </>
+              ) : (
+                'Penjualan belum bisa dipisah per sumber iklan.'
+              )}
             </div>
           </div>
           <div className="lp-hero-foot">
@@ -481,24 +507,7 @@ export default function DashboardPanel({ active }: { active: boolean }) {
         <div className="lp-chart-head">
           <div className="lp-chart-title">Total Views &amp; Clicks</div>
           <div className="lp-range">
-            <select
-              className="filter-select"
-              value={preset}
-              onChange={(e) => setPreset(e.target.value as Preset)}
-              aria-label="Rentang tanggal"
-            >
-              <option value="7">7 hari terakhir</option>
-              <option value="14">14 hari terakhir</option>
-              <option value="30">30 hari terakhir</option>
-              <option value="90">90 hari terakhir</option>
-              <option value="custom">Pilih tanggal…</option>
-            </select>
-            {preset === 'custom' && (
-              <>
-                <input type="date" value={customFrom} max={customTo} onChange={(e) => setCustomFrom(e.target.value)} aria-label="Dari tanggal" />
-                <input type="date" value={customTo} min={customFrom} max={dayKey(Date.now())} onChange={(e) => setCustomTo(e.target.value)} aria-label="Sampai tanggal" />
-              </>
-            )}
+            <DateRangePicker from={range.from} to={range.to} onChange={setRange} />
           </div>
         </div>
 
@@ -552,15 +561,29 @@ export default function DashboardPanel({ active }: { active: boolean }) {
               </div>
               {!hasData && !loadingEvents && (
                 <div className="lp-empty-overlay">
-                  Belum ada kunjungan pada rentang ini.<br />
-                  Data muncul setelah ada pengunjung yang membuka landing page.
+                  {mode === 'meta' ? (
+                    <>
+                      Belum ada kunjungan dari iklan Meta pada rentang ini.<br />
+                      Pastikan link iklan memakai parameter <code>utm_source=meta&amp;utm_medium=paid</code>.
+                    </>
+                  ) : (
+                    <>
+                      Belum ada kunjungan pada rentang ini.<br />
+                      Data muncul setelah ada pengunjung yang membuka landing page.
+                    </>
+                  )}
                 </div>
               )}
             </div>
-            <div className="lp-xaxis">
+            <div className="lp-xaxis" data-dense={data.series.length > 14 ? '1' : '0'}>
               {data.series.map((s, i) => (
                 <div className="lp-xl" key={s.day}>
-                  {i % tickEvery === 0 && <span>{fmtDayShort(s.day)}</span>}
+                  {i % tickEvery === 0 && (
+                    <>
+                      <span className="d">{dayNum(s.day)}</span>
+                      <span className="m">{monthShort(s.day)}</span>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -572,13 +595,13 @@ export default function DashboardPanel({ active }: { active: boolean }) {
       <div className="analytics-stats">
         <div className="a-card">
           <div className="a-card-lbl">Total Penjualan (Rp)</div>
-          <div className="a-card-val gold">{rp(money.sales)}</div>
-          <div className="a-card-sub">Sejak awal · sesuai filter</div>
+          <div className="a-card-val gold">{moneyAvailable ? rp(money.sales) : '—'}</div>
+          <div className="a-card-sub">{moneyAvailable ? 'Sejak awal · sesuai filter' : 'Belum bisa dipisah per iklan'}</div>
         </div>
         <div className="a-card">
           <div className="a-card-lbl">Total Order</div>
-          <div className="a-card-val">{nf(money.orders)}</div>
-          <div className="a-card-sub">Pembayaran berhasil · sesuai filter</div>
+          <div className="a-card-val">{moneyAvailable ? nf(money.orders) : '—'}</div>
+          <div className="a-card-sub">{moneyAvailable ? 'Pembayaran berhasil · sesuai filter' : 'Belum bisa dipisah per iklan'}</div>
         </div>
         <div className="a-card">
           <div className="a-card-lbl">Order via Affiliate</div>

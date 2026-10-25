@@ -14,6 +14,7 @@ export type MainTab = 'dashboard' | 'users' | 'marketing' | 'affiliate' | 'pixel
 // ── Sub-tab per menu yang punya sub-halaman
 export type UsersSubTab    = 'analytics' | 'management' | 'keys';
 export type MarketingSubTab = 'promo' | 'leads';
+export type PixelSubTab     = 'settings' | 'meta';
 
 type Toast = { msg: string; type: 'success' | 'error' | ''; id: number } | null;
 
@@ -46,6 +47,8 @@ interface AdminState {
   setUsersSubTab: (t: UsersSubTab) => void;
   marketingSubTab: MarketingSubTab;
   setMarketingSubTab: (t: MarketingSubTab) => void;
+  pixelSubTab: PixelSubTab;
+  setPixelSubTab: (t: PixelSubTab) => void;
 
   // keys
   allKeys: LicenseKey[];
@@ -101,6 +104,8 @@ export const useAdminStore = create<AdminState>((set) => ({
   setUsersSubTab: (usersSubTab) => set({ usersSubTab }),
   marketingSubTab: 'promo',
   setMarketingSubTab: (marketingSubTab) => set({ marketingSubTab }),
+  pixelSubTab: 'settings',
+  setPixelSubTab: (pixelSubTab) => set({ pixelSubTab }),
 
   allKeys: [],
   searchQuery: '',

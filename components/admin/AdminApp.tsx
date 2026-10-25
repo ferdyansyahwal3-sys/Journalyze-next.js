@@ -10,6 +10,7 @@ import KeysPanel from './KeysPanel';
 import AnalyticsPanel from './AnalyticsPanel';
 import DashboardPanel from './DashboardPanel';
 import PixelPanel from './PixelPanel';
+import MetaAnalyticsPanel from './MetaAnalyticsPanel';
 import UsersPanel from './UsersPanel';
 import PromoPanel from './PromoPanel';
 import AffiliatePanel from './AffiliatePanel';
@@ -22,6 +23,7 @@ export default function AdminApp() {
   const activeTab       = useAdminStore((s) => s.activeTab);
   const usersSubTab     = useAdminStore((s) => s.usersSubTab);
   const marketingSubTab = useAdminStore((s) => s.marketingSubTab);
+  const pixelSubTab     = useAdminStore((s) => s.pixelSubTab);
 
   if (authStatus !== 'loggedIn') {
     return <LoginScreen />;
@@ -88,7 +90,20 @@ export default function AdminApp() {
 
           {/* PIXEL */}
           <div style={{ display: activeTab === 'pixel' ? 'block' : 'none' }}>
-            <PixelPanel active={activeTab === 'pixel'} />
+            <SubTabBar
+              tabs={[
+                { id: 'settings', label: 'Pengaturan'    },
+                { id: 'meta',     label: 'Analitik Meta' },
+              ]}
+              active={pixelSubTab}
+              onChange={(t) => useAdminStore.getState().setPixelSubTab(t as typeof pixelSubTab)}
+            />
+            <div style={{ display: pixelSubTab === 'settings' ? 'block' : 'none' }}>
+              <PixelPanel active={activeTab === 'pixel' && pixelSubTab === 'settings'} />
+            </div>
+            <div style={{ display: pixelSubTab === 'meta' ? 'block' : 'none' }}>
+              <MetaAnalyticsPanel active={activeTab === 'pixel' && pixelSubTab === 'meta'} />
+            </div>
           </div>
 
         </main>

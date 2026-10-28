@@ -6,12 +6,28 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNewsAI } from '@/hooks/useNewsAI';
+import { compareBetter } from '@/lib/econ';
 
 // ── Constants (identik dengan index.html) ─────────────────────────────────────
-const NEWS_CACHE_KEY = 'jz_forex_news_v11';
+const NEWS_CACHE_KEY = 'jz_forex_news_v12';
 const NEWS_CACHE_TTL = 30 * 60 * 1000;
 const NEWS_PER_PAGE  = 9;
+const NEWS_MAX_AGE_MS = 3 * 24 * 3600 * 1000; // buang berita lebih tua dari 3 hari
+// Investing.com menulis pubDate tanpa zona waktu ("2026-10-28 23:19:05"). Safari menganggap format itu
+// tidak valid, dan Chrome membacanya sebagai jam lokal. Diperlakukan sebagai UTC.
+function parsePubDateMs(s: string): number {
+  const str = (s || '').trim();
+  const m = str.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})$/);
+  return new Date(m ? `${m[1]}T${m[2]}Z` : str).getTime();
+}
+function isFreshNews(item: { pubDate: string }): boolean {
+  const t = parsePubDateMs(item.pubDate);
+  if (Number.isNaN(t)) return false;
+  const age = Date.now() - t;
+  return age >= -3600000 && age <= NEWS_MAX_AGE_MS;
+}
 const EC_CACHE_KEY   = 'jz_econ_cal_v2';
+const EC_TTL_MS      = 5 * 60 * 1000;   // kalender di-refresh tiap 5 menit (actual masuk setelah rilis)
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface NewsItem {
@@ -55,7 +71,7 @@ function timeAgo(iso: string): string {
     if (diff < 60) return 'baru saja';
     if (diff < 3600) return Math.floor(diff/60) + 'm lalu';
     if (diff < 86400) return Math.floor(diff/3600) + 'j lalu';
-    return Math.floor(diff/86400) + 'h lalu';
+    return Math.floor(diff/86400) + 'hr lalu';
   } catch { return '—'; }
 }
 
@@ -280,7 +296,7 @@ const RSS_SOURCES = [
   {url:'https://www.forexlive.com/feed/news',name:'ForexLive'},
   {url:'https://www.investing.com/rss/news_301.rss',name:'Investing Economy'},
   {url:'https://www.investing.com/rss/news_14.rss',name:'Investing Forex'},
-  {url:'https://www.investing.com/rss/news_2.rss',name:'Investing Commodities'},
+  {url:'https://www.investing.com/rss/news_11.rss',name:'Investing Commodities'},
 ];
 
 // ── localStorage key read helper ──────────────────────────────────────────────
@@ -504,15 +520,15 @@ export default function PageNews({
   }, [unsplashImages]);
 
   // ── Lazy load history per event (dipanggil saat expand) ──────────────────
-  const fetchEventHistory = useCallback(async (eventName: string) => {
+  const fetchEventHistory = useCallback(async (eventName: string, currency = '') => {
     if (!eventName) return;
-    const key = eventName.toLowerCase().trim();
+    const key = (currency + '|' + eventName).toLowerCase().trim();
     // Sudah ada di cache atau sedang loading → skip
     if (historyCache[key] || historyLoading[key]) return;
 
     setHistoryLoading(prev => ({ ...prev, [key]: true }));
     try {
-      const res = await fetch(`/api/econ-history?event=${encodeURIComponent(eventName)}`, {
+      const res = await fetch(`/api/econ-history?event=${encodeURIComponent(eventName)}&currency=${encodeURIComponent(currency)}`, {
         signal: AbortSignal.timeout(8000),
       });
       if (res.ok) {
@@ -557,13 +573,13 @@ export default function PageNews({
         if (!r.ok) continue;
         const d = await r.json();
         if (d.xml && d.xml.length > 100) {
-          const raw = parseRSSXML(d.xml, src.url);
+          const raw = parseRSSXML(d.xml, src.url).filter(isFreshNews);
           const items = raw.slice(0,8).map((item, i) => ({
             id: src.name+'_'+i,
             title: item.title,
             desc: item.desc || '',
             source: src.name,
-            time: item.pubDate,
+            time: new Date(parsePubDateMs(item.pubDate)).toISOString(),
             url: item.link,
             thumbnail: item.thumbnail || '',
             category: detectCategory(item.title, item.desc||''),
@@ -661,7 +677,7 @@ export default function PageNews({
     const fr = new Date(mn); fr.setUTCDate(mn.getUTCDate()+4);
     setCalTitle(`📅 ECONOMIC CALENDAR — ${mn.getUTCDate()} ${MO[mn.getUTCMonth()]} – ${fr.getUTCDate()} ${MO[fr.getUTCMonth()]} ${fr.getUTCFullYear()}`);
     try {
-      const alreadyFetched = localStorage.getItem(FETCH_KEY) === '1';
+      const alreadyFetched = Date.now() - Number(localStorage.getItem(FETCH_KEY) || 0) < EC_TTL_MS;
       const lc = JSON.parse(localStorage.getItem(LCKEY)||'null');
       if (alreadyFetched && lc?.length) {
         setEvents(mapCalEvents(lc)); setCalLoading(false); return;
@@ -675,7 +691,7 @@ export default function PageNews({
       if (raw?.length) {
         const enriched = raw.map((ev: {flag?:string;currency?:string;name?:string}) => ({...ev, flag: resolveFlag(ev)}));
         localStorage.setItem(LCKEY, JSON.stringify(enriched));
-        localStorage.setItem(FETCH_KEY, '1');
+        localStorage.setItem(FETCH_KEY, String(Date.now()));
         setEvents(mapCalEvents(enriched));
       } else {
         throw new Error('empty');
@@ -978,15 +994,10 @@ export default function PageNews({
               <div style={{padding:'16px',textAlign:'center' as const,color:'var(--text3)',fontSize:'12px'}}>Tidak ada event ekonomi minggu ini</div>
             ) : events.map((ev, i) => {
               const isExpanded = expandedEvent === i;
-              const actualNum = parseFloat((ev.actual||'').replace(/[^0-9.\-]/g,''));
-              const forecastNum = parseFloat((ev.forecast||'').replace(/[^0-9.\-]/g,''));
+              const verdict = compareBetter(ev.name, ev.actual, ev.forecast);
               let actualColor = 'var(--text4)';
               if (ev.actual) {
-                if (!isNaN(actualNum) && !isNaN(forecastNum)) {
-                  actualColor = actualNum > forecastNum ? 'var(--green)' : actualNum < forecastNum ? 'var(--red)' : 'var(--text2)';
-                } else {
-                  actualColor = 'var(--text2)';
-                }
+                actualColor = verdict === 'good' ? 'var(--green)' : verdict === 'bad' ? 'var(--red)' : 'var(--text2)';
               }
 
               return (
@@ -1006,7 +1017,7 @@ export default function PageNews({
                       const newExpanded = isExpanded ? null : i;
                       setExpandedEvent(newExpanded);
                       if (!isExpanded && ev.name) {
-                        fetchEventHistory(ev.name);
+                        fetchEventHistory(ev.name, ev.currency || '');
                       }
                     }}
                     onMouseEnter={e => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.025)'; }}
@@ -1079,23 +1090,23 @@ export default function PageNews({
                         <span style={{padding:'3px 8px',borderRadius:'4px',background:'rgba(255,255,255,0.05)',fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',color:'var(--text3)'}}>
                           ⏰ {ev.timeWIB}
                         </span>
-                        {ev.actual && !isNaN(actualNum) && !isNaN(forecastNum) && (
+                        {ev.actual && verdict && verdict !== 'neutral' && (
                           <span style={{padding:'3px 8px',borderRadius:'4px',fontFamily:"'JetBrains Mono',monospace",fontSize:'8px',
-                            background:actualNum>forecastNum?'rgba(50,200,100,0.12)':'rgba(220,50,50,0.12)',
-                            color:actualNum>forecastNum?'var(--green)':'var(--red)',
+                            background:verdict==='good'?'var(--green-bg, rgba(50,200,100,0.12))':'var(--red-bg, rgba(220,50,50,0.12))',
+                            color:verdict==='good'?'var(--green)':'var(--red)',
                           }}>
-                            {actualNum>forecastNum?'▲ Better Than Expected':'▼ Worse Than Expected'}
+                            {verdict==='good'?'▲ Better Than Expected':'▼ Worse Than Expected'}
                           </span>
                         )}
                       </div>
 
                       {/* History bulan-bulan sebelumnya */}
                       {(() => {
-                        const key = (ev.name||'').toLowerCase().trim();
+                        const key = ((ev.currency||'') + '|' + (ev.name||'')).toLowerCase().trim();
                         const cachedHistory = historyCache[key];
                         const isLoadingHistory = historyLoading[key];
                         // Gabungkan: ev.history dari ForexFactory weekly + cachedHistory dari lazy fetch
-                        const displayHistory = cachedHistory ?? ev.history ?? [];
+                        const displayHistory = (cachedHistory && cachedHistory.length) ? cachedHistory : (ev.history ?? []);
 
                         return (
                           <div style={{marginTop:'8px'}}>
@@ -1105,7 +1116,7 @@ export default function PageNews({
                               color:'var(--text4)',marginBottom:'6px',
                               display:'flex',alignItems:'center',gap:'6px',
                             }}>
-                              <span>📅 History Rilis Sebelumnya</span>
+                              <span>📅 History Rilis Sebelumnya <span style={{color:'var(--text4)',letterSpacing:'0.5px'}}>(* = nilai revisi)</span></span>
                               {isLoadingHistory && (
                                 <span style={{animation:'spin 1s linear infinite',display:'inline-block',fontSize:'10px'}}>⟳</span>
                               )}
@@ -1143,12 +1154,8 @@ export default function PageNews({
                                 </div>
                                 {/* Rows */}
                                 {displayHistory.map((h, hi) => {
-                                  const hActualNum = parseFloat((h.actual||'').replace(/[^0-9.\-]/g,''));
-                                  const hForecastNum = parseFloat((h.forecast||'').replace(/[^0-9.\-]/g,''));
-                                  let hColor = 'var(--text2)';
-                                  if (h.actual && h.actual!=='—' && !isNaN(hActualNum) && !isNaN(hForecastNum)) {
-                                    hColor = hActualNum>hForecastNum?'var(--green)':hActualNum<hForecastNum?'var(--red)':'var(--text2)';
-                                  }
+                                  const hv = compareBetter(ev.name, h.actual, h.forecast);
+                                  const hColor = hv === 'good' ? 'var(--green)' : hv === 'bad' ? 'var(--red)' : 'var(--text2)';
                                   return (
                                     <div key={hi} style={{
                                       display:'grid',gridTemplateColumns:'1fr 56px 56px 56px',

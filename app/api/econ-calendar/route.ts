@@ -1,149 +1,140 @@
 // app/api/econ-calendar/route.ts
-// Port dari api/econ-calendar.js (Vercel serverless) → Next.js App Router Route Handler
-// Fetch ForexFactory calendar JSON server-side (bypass CORS)
-// v2: tambah history data per event (5 releases terakhir)
+// Kalender ekonomi minggu ini untuk PageNews.
+//
+// v3: baca dari tabel Supabase `econ_events` (diisi oleh /api/econ-sync) —
+//     tidak ada lagi 12–24 request history ke feed eksternal per cache miss.
+//     Kalau tabel belum terisi, fallback ke feed ForexFactory langsung (tanpa actual & history).
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { _sbAdmin } from '@/lib/supabaseClient';
+import {
+  CALENDAR_CURRENCIES,
+  buildHistory,
+  feedToRows,
+  weekRangeWib,
+  type HistoryRow,
+  type SeriesRow,
+} from '@/lib/econ';
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
 
 const FF_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json?version=1';
-// Endpoint history ForexFactory — by event title
-const FF_HISTORY_URL = 'https://nfs.faireconomy.media/ff_calendar_history.json?title=';
-
-const ALLOWED_CURRENCIES = new Set(['USD', 'EUR', 'GBP', 'JPY', 'AUD', 'NZD', 'CAD', 'CHF']);
-
-const FETCH_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+const FF_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (compatible; Journalyze/1.0; +https://journalyze.my.id)',
   'Accept': 'application/json, */*',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Referer': 'https://www.forexfactory.com/',
-  'Origin': 'https://www.forexfactory.com',
-  'Cache-Control': 'no-cache',
 };
+const CACHE = 'public, s-maxage=60, stale-while-revalidate=120';
 
-// Fetch history untuk satu event (max 5 bulan terakhir)
-async function fetchEventHistory(title: string): Promise<{date:string;actual:string;forecast:string;previous:string}[]> {
-  // ForexFactory tidak punya public history API — generate dari data minggu lalu
-  // Gunakan endpoint yang benar: ff_calendar_history.json dengan parameter title
-  const urls = [
-    `https://nfs.faireconomy.media/ff_calendar_history.json?title=${encodeURIComponent(title)}`,
-    `https://cdn-nfs.faireconomy.media/ff_calendar_history.json?title=${encodeURIComponent(title)}`,
-  ];
-
-  for (const url of urls) {
-    try {
-      const r = await fetch(url, {
-        headers: { ...FETCH_HEADERS },
-        signal: AbortSignal.timeout(4000),
-      });
-      if (!r.ok) continue;
-      const raw = await r.json();
-
-      // Format bisa array langsung atau {history: [...]}
-      const history: Record<string,string>[] = Array.isArray(raw) ? raw : (raw?.history || raw?.data || []);
-      if (!history.length) continue;
-
-      // Ambil 5 entry terbaru, descending by date
-      return history
-        .slice(-6)   // ambil 6 terakhir
-        .slice(0, 5) // max 5
-        .reverse()
-        .map((h) => ({
-          date: h.date || h.Date || h.release_date || '',
-          actual: h.actual || h.Actual || '—',
-          forecast: h.forecast || h.Forecast || '—',
-          previous: h.previous || h.Previous || h.prev || '—',
-        }))
-        .filter(h => h.date);
-    } catch {
-      continue;
-    }
-  }
-  return [];
+interface DbEvent {
+  id: string;
+  currency: string;
+  title: string;
+  title_key: string;
+  impact: string;
+  release_at: string;
+  forecast: string | null;
+  previous: string | null;
+  actual: string | null;
 }
 
-export async function GET(_request: NextRequest) {
+interface ClientEvent {
+  title: string;
+  name: string;
+  country: string;
+  currency: string;
+  date: string;
+  impact: 'High' | 'Medium';
+  forecast: string;
+  previous: string;
+  actual: string;
+  history: HistoryRow[];
+}
+
+function toClient(e: DbEvent, history: HistoryRow[]): ClientEvent {
+  return {
+    title: e.title,
+    name: e.title,
+    country: e.currency,
+    currency: e.currency,
+    date: e.release_at,
+    impact: e.impact === 'high' ? 'High' : 'Medium',
+    forecast: e.forecast ?? '',
+    previous: e.previous ?? '',
+    actual: e.actual ?? '',
+    history,
+  };
+}
+
+/** Ambil seluruh seri untuk event minggu ini dalam SATU query, lalu bangun history per event. */
+async function loadHistories(events: DbEvent[]): Promise<Map<string, SeriesRow[]>> {
+  const keys = Array.from(new Set(events.map(e => e.title_key)));
+  const map = new Map<string, SeriesRow[]>();
+  if (!keys.length) return map;
+  const { data, error } = await _sbAdmin
+    .from('econ_events')
+    .select('currency,title_key,release_at,actual,forecast,previous')
+    .in('title_key', keys)
+    .in('currency', [...CALENDAR_CURRENCIES])
+    .order('release_at', { ascending: true })
+    .limit(3000);
+  if (error) {
+    console.warn('[econ-calendar] history query gagal:', error.message);
+    return map;
+  }
+  for (const r of (data || []) as (SeriesRow & { currency: string; title_key: string })[]) {
+    const k = `${r.currency}|${r.title_key}`;
+    const arr = map.get(k);
+    const row: SeriesRow = { release_at: r.release_at, actual: r.actual, forecast: r.forecast, previous: r.previous };
+    if (arr) arr.push(row); else map.set(k, [row]);
+  }
+  return map;
+}
+
+export async function GET() {
   try {
-    const r = await fetch(FF_URL, {
-      headers: FETCH_HEADERS,
-      signal: AbortSignal.timeout(10000),
-    });
+    const { fromIso, toIso } = weekRangeWib();
 
-    if (!r.ok) throw new Error('ForexFactory HTTP ' + r.status);
+    const { data, error } = await _sbAdmin
+      .from('econ_events')
+      .select('id,currency,title,title_key,impact,release_at,forecast,previous,actual')
+      .gte('release_at', fromIso)
+      .lt('release_at', toIso)
+      .in('currency', [...CALENDAR_CURRENCIES])
+      .in('impact', ['high', 'medium'])
+      .order('release_at', { ascending: true });
+    if (error) throw new Error('DB: ' + error.message);
 
-    const events = await r.json();
+    const rows = (data || []) as DbEvent[];
 
-    if (!Array.isArray(events) || events.length === 0) {
-      throw new Error('Empty response');
+    if (rows.length) {
+      const series = await loadHistories(rows);
+      const events = rows.map(e =>
+        toClient(e, buildHistory(series.get(`${e.currency}|${e.title_key}`) ?? [], e.release_at)),
+      );
+      return NextResponse.json(
+        { ok: true, source: 'db', fetched_at: new Date().toISOString(), events },
+        { headers: { 'Cache-Control': CACHE } },
+      );
     }
 
-    // Filter & normalisasi
-    const filtered = events
-      .filter(
-        (ev: Record<string, string>) =>
-          ALLOWED_CURRENCIES.has(ev.country) &&
-          (ev.impact === 'High' || ev.impact === 'Medium')
-      )
-      .map((ev: Record<string, string>) => ({ ...ev, currency: ev.country }));
+    // ── Fallback: tabel belum terisi → feed langsung (tanpa actual & history) ──
+    const r = await fetch(FF_URL, { headers: FF_HEADERS, signal: AbortSignal.timeout(10000), cache: 'no-store' });
+    if (!r.ok) throw new Error('ForexFactory HTTP ' + r.status);
+    const feedRows = feedToRows(await r.json())
+      .filter(x => (CALENDAR_CURRENCIES as readonly string[]).includes(x.currency) && (x.impact === 'high' || x.impact === 'medium'));
+    if (!feedRows.length) throw new Error('Empty response');
 
-    // Fetch history untuk setiap event HIGH impact (max 8 event, parallel)
-    const highEvents = filtered.filter((ev: Record<string,string>) => ev.impact === 'High').slice(0, 8);
-    const historyResults = await Promise.allSettled(
-      highEvents.map((ev: Record<string,string>) => fetchEventHistory(ev.title || ev.name || ''))
+    const events = feedRows.map(x =>
+      toClient({ ...x, actual: null }, []),
     );
-
-    // Attach history ke event yang sesuai
-    const titleHistoryMap: Record<string, {date:string;actual:string;forecast:string;previous:string}[]> = {};
-    highEvents.forEach((ev: Record<string,string>, i: number) => {
-      const res = historyResults[i];
-      if (res.status === 'fulfilled' && res.value.length) {
-        titleHistoryMap[ev.title || ev.name || ''] = res.value;
-      }
-    });
-
-    const enriched = filtered.map((ev: Record<string,string>) => ({
-      ...ev,
-      history: titleHistoryMap[ev.title || ev.name || ''] || [],
-    }));
-
     return NextResponse.json(
-      {
-        ok: true,
-        source: 'forexfactory',
-        fetched_at: new Date().toISOString(),
-        events: enriched,
-      },
-      {
-        status: 200,
-        headers: {
-          ...CORS_HEADERS,
-          'Cache-Control': 's-maxage=3600, stale-while-revalidate=1800',
-        },
-      }
+      { ok: true, source: 'forexfactory-feed', fetched_at: new Date().toISOString(), events },
+      { headers: { 'Cache-Control': CACHE } },
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[econ-calendar] Error:', message);
-
-    return NextResponse.json(
-      { ok: false, error: message, events: [] },
-      { status: 500, headers: CORS_HEADERS }
-    );
+    return NextResponse.json({ ok: false, error: message, events: [] }, { status: 500 });
   }
-}
-
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 204,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
-  });
 }

@@ -1,11 +1,15 @@
-// hooks/useNewsAI.ts — v6
+// hooks/useNewsAI.ts — v7
 // Shared cache: analisis AI disimpan global di Supabase, semua user pakai bersama
-// Flow: localStorage → Supabase shared → Gemini API → simpan shared
+// Flow: localStorage → Supabase shared (BACA langsung) → Gemini/Claude → simpan shared (TULIS lewat /api/news-cache)
+//
+// v7: penulisan ke news_analysis_shared tidak lagi dari browser (RLS write sudah dikunci,
+//     lihat supabase/02_lock_news_cache.sql). Browser hanya membaca.
 
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
 import { _sb } from '@/lib/supabaseClient';
+import { hashTitle, isValidAnalysis, NEWS_CACHE_TTL_MS } from '@/lib/newsHash';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface NewsItem {
@@ -26,28 +30,8 @@ const LS_GEMINI_NEWS   = 'jz_gemini_news_key';
 const LS_ANTHROPIC_KEY = 'jz_anthropic_key';
 const LOCAL_CACHE_KEY  = 'jz_news_analysis_local';
 const SHARED_TABLE     = 'news_analysis_shared';
-const TTL_MS           = 12 * 60 * 60 * 1000; // 12 jam
+const TTL_MS           = NEWS_CACHE_TTL_MS;     // 12 jam
 const MAX_BATCH        = 8;                     // max berita per prompt
-const GENERATING_TIMEOUT = 30 * 1000;          // 30 detik timeout flag generating
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function hashTitle(title: string): string {
-  let h = 0;
-  for (let i = 0; i < Math.min(title.length, 80); i++) {
-    h = ((h << 5) - h) + title.charCodeAt(i);
-    h |= 0;
-  }
-  return 'nh_' + Math.abs(h).toString(36);
-}
-
-const FALLBACK_MARKERS = [
-  'Tambahkan API key', 'aistudio.google.com', 'Pengaturan AI',
-  'Rate limit', 'Koneksi ke AI', 'Gagal memuat',
-];
-function isValidAnalysis(text?: string): boolean {
-  if (!text || text.length < 80) return false;
-  return !FALLBACK_MARKERS.some(m => text.includes(m));
-}
 
 // ── Local cache (localStorage) — TTL 12 jam ───────────────────────────────────
 type LocalEntry = {
@@ -92,6 +76,7 @@ type SharedEntry = {
   description: string; is_generating: boolean; expires_at: string;
 };
 
+// BACA langsung (policy SELECT masih terbuka untuk user login)
 async function getSharedCache(hashes: string[]): Promise<Record<string, SharedEntry>> {
   try {
     const now = new Date().toISOString();
@@ -107,16 +92,22 @@ async function getSharedCache(hashes: string[]): Promise<Record<string, SharedEn
   } catch { return {}; }
 }
 
-async function setGeneratingFlag(hashes: string[], titles: string[]) {
+// TULIS lewat server — butuh sesi login; kalau tidak ada sesi, dilewati (best effort)
+async function postNewsCache(body: unknown): Promise<void> {
+  const { data } = await _sb.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) return;
+  await fetch('/api/news-cache', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8000),
+  });
+}
+
+async function setGeneratingFlag(titles: string[]) {
   try {
-    const rows = hashes.map((h, i) => ({
-      title_hash: h, title: (titles[i] || '').slice(0, 200),
-      analysis: '', speculation: '', headline: '',
-      scenario_bear: '', scenario_bull: '', description: '',
-      is_generating: true,
-      expires_at: new Date(Date.now() + GENERATING_TIMEOUT).toISOString(),
-    }));
-    await _sb.from(SHARED_TABLE).upsert(rows, { onConflict: 'title_hash', ignoreDuplicates: false });
+    await postNewsCache({ action: 'lock', items: titles.map(title => ({ title })) });
   } catch { /* best effort */ }
 }
 
@@ -124,37 +115,25 @@ async function saveSharedCache(items: NewsItem[]) {
   const valid = items.filter(n => isValidAnalysis(n.analysis));
   if (!valid.length) return;
   try {
-    const expiresAt = new Date(Date.now() + TTL_MS).toISOString();
-    const rows = valid.map(n => ({
-      title_hash: hashTitle(n.title),
-      title: n.title.slice(0, 200),
-      analysis: n.analysis || '',
-      speculation: n.speculation || '',
-      headline: n.headline || '',
-      scenario_bear: n.scenario_bear || '',
-      scenario_bull: n.scenario_bull || '',
-      description: n.desc || '',
-      source: n.source || '',
-      impact: n.impact || 'medium',
-      category: n.category || 'forex',
-      is_generating: false,
-      expires_at: expiresAt,
-    }));
-    await _sb.from(SHARED_TABLE).upsert(rows, { onConflict: 'title_hash', ignoreDuplicates: false });
-    console.log(`[SharedCache] ✅ Simpan ${rows.length} analisis — berlaku sampai ${expiresAt}`);
+    await postNewsCache({
+      action: 'save',
+      items: valid.map(n => ({
+        title: n.title,
+        analysis: n.analysis || '',
+        speculation: n.speculation || '',
+        headline: n.headline || '',
+        scenario_bear: n.scenario_bear || '',
+        scenario_bull: n.scenario_bull || '',
+        desc: n.desc || '',
+        source: n.source || '',
+        impact: n.impact || 'medium',
+        category: n.category || 'forex',
+      })),
+    });
+    console.log(`[SharedCache] ✅ Kirim ${valid.length} analisis ke server`);
   } catch (e) {
     console.warn('[SharedCache] Save error:', (e as Error).message);
   }
-}
-
-async function pruneSharedCache() {
-  try {
-    // Hapus yang expired DAN bukan sedang generating
-    const cutoff = new Date(Date.now() - TTL_MS).toISOString();
-    await _sb.from(SHARED_TABLE).delete()
-      .lt('expires_at', cutoff)
-      .eq('is_generating', false);
-  } catch { /* best effort */ }
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -206,9 +185,6 @@ export function useNewsAI(): UseNewsAIReturn {
     const hashes = afterLocal.map(n => hashTitle(n.title));
 
     try {
-      // Prune background
-      pruneSharedCache().catch(() => {});
-
       const sharedCache = await getSharedCache(hashes);
       const nowIso = new Date().toISOString();
 
@@ -262,10 +238,8 @@ export function useNewsAI(): UseNewsAIReturn {
     setAiLoading(true);
     const safetyTimer = setTimeout(() => { analyzingRef.current = false; setAiLoading(false); }, 45000);
 
-    // Tandai sebagai "sedang generating" di Supabase (lock untuk user lain)
-    const needHashes  = stillNeed.map(n => hashTitle(n.title));
-    const needTitles  = stillNeed.map(n => n.title);
-    await setGeneratingFlag(needHashes, needTitles).catch(() => {});
+    // Tandai sebagai "sedang generating" (lock untuk user lain) — lewat server
+    await setGeneratingFlag(stillNeed.map(n => n.title)).catch(() => {});
 
     // Batch: max MAX_BATCH per prompt
     const batches: NewsItem[][] = [];
@@ -288,7 +262,7 @@ Analisis ${batch.length} berita berikut:
 ${batch.map((n, i) => `${i + 1}. [${(n.impact||'MEDIUM').toUpperCase()}] ${n.title}${n.desc ? ' | ' + n.desc.slice(0, 120) : ''}`).join('\n')}
 
 Balas HANYA JSON array dengan TEPAT ${batch.length} objek, tanpa markdown:
-[{"headline":"1 kalimat + emoji","analysis":"narasi 3-4 kalimat mendalam + pair terdampak","scenario_bear":"2 kalimat bearish + pair","scenario_bull":"2 kalimat bullish + pair","speculation":"bias 1 kalimat","desc":"ringkasan 1 kalimat"}]`;
+[{"headline":"1 kalimat + emoji","analysis":"narasi 3-4 kalimat mendalam + pair terdampak","scenario_bear":"2 kalimat bearish +pair","scenario_bull":"2 kalimat bullish + pair","speculation":"bias 1 kalimat","desc":"ringkasan 1 kalimat"}]`;
 
         let txt = '';
 
@@ -357,12 +331,12 @@ Balas HANYA JSON array dengan TEPAT ${batch.length} objek, tanpa markdown:
                 n._aiFallback = !isValidAnalysis(n.analysis);
               });
 
-              // Simpan ke shared cache + local cache
+              // Simpan ke shared cache (via server) + local cache
               const successItems = batch.filter(n => !n._aiFallback);
               if (successItems.length) {
                 saveSharedCache(successItems).catch(() => {});
                 saveLocalEntries(successItems);
-                console.log(`[AI] ✅ ${successItems.length} analisis berhasil, disimpan ke shared cache`);
+                console.log(`[AI] ✅ ${successItems.length} analisis berhasil, dikirim ke shared cache`);
               }
             }
           } catch (parseErr) {
@@ -385,16 +359,9 @@ Balas HANYA JSON array dengan TEPAT ${batch.length} objek, tanpa markdown:
   }, []);
 
   const clearCache = useCallback(async (_userId?: string) => {
-    // Hapus local cache
+    // Hanya cache lokal. Cache bersama kedaluwarsa sendiri (12 jam) dan
+    // tidak bisa dihapus dari browser lagi (RLS write dikunci).
     localStorage.removeItem(LOCAL_CACHE_KEY);
-    // Hapus semua shared cache yang expired (bukan force delete semua)
-    try {
-      const cutoff = new Date(Date.now() - 1000).toISOString(); // semua yang sudah expire
-      await _sb.from(SHARED_TABLE).delete().lt('expires_at', cutoff);
-      console.log('[Cache] Shared cache cleared');
-    } catch (e) {
-      console.warn('[Cache] Clear error:', (e as Error).message);
-    }
   }, []);
 
   return { aiLoading, analyzeNews, clearCache };

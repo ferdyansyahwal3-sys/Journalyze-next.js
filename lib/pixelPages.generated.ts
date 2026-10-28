@@ -13,9 +13,11 @@ export const PIXEL_PAGES: PixelPage[] = [
   { path: "/demo", note: "" },
   { path: "/demo/embed", note: "" },
   { path: "/journal", note: "" },
+  { path: "/kebijakan-privasi", note: "" },
   { path: "/live", note: "" },
   { path: "/live/*", note: "Halaman dinamis" },
   { path: "/order", note: "" },
+  { path: "/syarat-ketentuan", note: "" },
   { path: "/uji-coba", note: "" },
   { path: "/upgrade", note: "" },
 ];

@@ -899,7 +899,7 @@ function HomeAppInner() {
 
       {/* ── TOAST NOTIF PEMBELIAN ── */}
       <div className={`purchase-toast${toastVisible ? ' show' : ''}`}>
-        <div className="pt-avatar">J</div>
+        <div className="pt-avatar">{toastData.name.charAt(0)}</div>
         <div className="pt-text">
           <div className="pt-name" style={{ fontWeight: 700 }}>{toastData.name}</div>
           <div className="pt-action">{toastData.action}</div>
